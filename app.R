@@ -14,45 +14,60 @@ library(leaflet)
 library(tidyverse)
 library(RColorBrewer)
 library(DT)
+library(ggplot2)
+library(shinycssloaders)
 
-Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
+# USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
+readRenviron(file.path("./", ".Renviron"))
 
 options(shiny.error = '')
-# Define UI for application that draws a histogram
-ui <- fluidPage(
 
-   
-   # Application title
+ui <- fluidPage(
    titlePanel("Chicago Crash Data"),
    
    # Main Map
    leafletOutput("map"),
    
    fluidRow(
-      column(6,
-        selectInput(inputId = "crashtype",
-                    label = "Choose a crash type:",
-                    choices = c("Pedestrian" = "PEDESTRIAN", "Cyclist" = "PEDALCYCLIST")
-                    ),
-        dateRangeInput("crashdate", "Date range:",
-                       start = "2017-01-01")
-       # actionButton("pullCrashes", "Get Crashes for Map Extent"),
-       
+      column(4,
+        h4("Options"),
+        wellPanel(
+          selectInput(inputId = "crashtype",
+                      label = "Choose a crash type:",
+                      choices = c("Pedestrian" = "PEDESTRIAN", "Cyclist" = "PEDALCYCLIST")
+                      ),
+          dateRangeInput("crashdate", "Date range:",
+                         start = "2017-09-01"),
+          p(class="text-muted","All police districts since September 2017. Earliest data since 2015.")
+        )
       ),
-      column(6,
-      tableOutput("crashsummary")
+      column(8,
+        h4("Crashes Summarized by Most Severe Injury"),
+        h5("Only counts crashes currently displayed on the map"),
+        downloadButton("downloadVisCrashes", textOutput("downloadLabel",inline=TRUE)),
+        tableOutput("crashsummary") %>% withSpinner()
       )
-  ),
-  fluidRow(
-    column(12,
-      DT::dataTableOutput("crashes")
-      )
-  )
+  ) #,
+  # fluidRow(
+  #   column(4,
+  #         h4("Time of Day Histogram"),
+  #         plotOutput("todplot") %>% withSpinner()
+  #   ),
+  #   column(4,
+  #          h4("Day of Week Histogram"),
+  #          plotOutput("dowplot") %>% withSpinner()
+  #   ),
+  #   column(4,
+  #          h4("Time of Day Histogram")
+  #   )
+  # )
+  # fluidRow(
+  #   column(12,
+  #     h3("Crash Details"),
+  #     DT::dataTableOutput("crashes") %>% withSpinner()
+  #     )
+  # )
 )
-
-
-
-
 
 server <- function(input, output) {
   
@@ -72,41 +87,37 @@ server <- function(input, output) {
     )
     
     output$map <- renderLeaflet({
-      leaflet() %>%
-        addProviderTiles(providers$CartoDB.Positron) %>%
-        setView(
-          lng = -87.5,
-          lat = 41.9,
-          zoom = 10
-        ) %>%
-        addPolylines(
-          data = bikeroutes,
-          group = "Existing Bike Routes",
-          color = ~pal(displayrou),
-          opacity = 0.5,
-          weight = 3,
-          popup = ~paste0("<strong>",str_to_title(street),"</strong><br>",str_to_title(displayrou))
-        ) %>%
-        addLegend(
-          position = "topright",
-          title = "Existing Bike Routes",
-          colors = c("#7E5109","#85D8FC","#ABEBC6","#2ECC71","#FCDE66"),
-          labels = c("Off-street Trails","Standard and Buffered Bike Lanes","Neighborhood Greenways","Protected Bike Lanes","Marked Shared Lanes (\"Sharrows\")")
-        ) %>%
-        addCircleMarkers(
-          data = crash_data(),
-          lng = ~longitude,
-          lat = ~latitude,
-          radius = ~ifelse(most_severe_injury == "FATAL", 10, 4),
-          stroke = FALSE,
-          fillColor = ~pal2(most_severe_injury),
-          fillOpacity = 2,
-          popup = ~paste0("<strong>",street_no," ",street_direction," ",str_to_title(street_name),"</strong><br>Date: ",format(crash_date, format = "%b %d, %Y"),"<br>Type: ",str_to_title(first_crash_type),"<br>Most severe injury: ",str_to_title(most_severe_injury))
-        ) # %>%
-        #addLegend(
-        #  position = "topright",
-        #  title = "Crash Injury Types", pal = pal2, values = ~most_severe_injury
-        #)
+        leaflet() %>%
+          addProviderTiles(providers$CartoDB.Positron) %>%
+          setView(
+            lng = -87.5,
+            lat = 41.9,
+            zoom = 10
+          ) %>%
+          addPolylines(
+            data = bikeroutes,
+            group = "Existing Bike Routes",
+            color = ~pal(displayrou),
+            opacity = 0.5,
+            weight = 3,
+            popup = ~paste0("<strong>",str_to_title(street),"</strong><br>",str_to_title(displayrou))
+          ) %>%
+          # addLegend(
+          #   position = "topright",
+          #   title = "Existing Bike Routes",
+          #   colors = c("#7E5109","#85D8FC","#ABEBC6","#2ECC71","#FCDE66"),
+          #   labels = c("Off-street Trails","Standard and Buffered Bike Lanes","Neighborhood Greenways","Protected Bike Lanes","Marked Shared Lanes (\"Sharrows\")")
+          # ) %>%
+          addCircleMarkers(
+            data = crash_data(),
+            lng = ~longitude,
+            lat = ~latitude,
+            radius = ~ifelse(most_severe_injury == "FATAL", 10, 4),
+            stroke = FALSE,
+            fillColor = ~pal2(most_severe_injury),
+            fillOpacity = 2,
+            popup = ~paste0("<strong>",street_no," ",street_direction," ",str_to_title(street_name),"</strong><br>Date: ",format(crash_date, format = "%b %d, %Y"),"<br>Type: ",str_to_title(first_crash_type),"<br>Most severe injury: ",str_to_title(most_severe_injury))
+          )
     })
     
   # Update Crashes based on inputs
@@ -125,15 +136,24 @@ server <- function(input, output) {
       
       # Eliminate non-Chicago or missing lat/long points
       crashes <- crashes %>%
+        select(-c(location.coordinates)) %>%
         filter(latitude > 35 & longitude < -85)
       return(crashes)
     })
+    
+    observe({
+      leafletProxy("map", data = crash_data()) %>%
+      addLegend(
+        position = "topright",
+        title = "Crash Injury Types", pal = pal2, values = ~most_severe_injury
+      )
+    })
+    
     
     visible_crashes <- reactive({
       if (!is.null(input$map_bounds)) {
         visible <- crash_data() %>%
           filter(latitude <= input$map_bounds$north & latitude > input$map_bounds$south & longitude < input$map_bounds$east & longitude >= input$map_bounds$west)
-      
       return(visible)
       }else{
         return(NULL)
@@ -149,12 +169,38 @@ server <- function(input, output) {
            spread(year,total,fill=NA,convert=FALSE)
         }
        )
-   output$crashes <- DT::renderDataTable(
-     if (!is.null(visible_crashes())) {
-     visible_crashes() %>%
-       select(crash_date,first_crash_type,most_severe_injury,latitude,longitude)
+   
+   # output$todplot <- renderPlot(
+   #   if (!is.null(visible_crashes())) {
+   #   ggplot(visible_crashes()) + geom_histogram(stat="count",aes(x=as.numeric(crash_hour)))
+   #   }
+   # )
+   # 
+   # output$dowplot <- renderPlot(
+   #   if (!is.null(visible_crashes())) {
+   #     ggplot(visible_crashes()) + geom_histogram(stat="count",aes(x=as.numeric(crash_day_of_week)))
+   #   }
+   # )
+   
+   #output$crashes <- DT::renderDataTable(
+   #  # colnames(c("Crash Date","Street Address","First Crash Type","Most Severe Injury","latitude","longitude")),
+   #  if (!is.null(visible_crashes())) {
+   #    visible_crashes() %>%
+   #      mutate(st_address = paste0(street_no," ",street_direction," ",str_to_title(street_name))) %>%
+   #      select(crash_date,st_address,first_crash_type,most_severe_injury,latitude,longitude)
+   #  }
+   #  )
+   
+   output$downloadLabel <- renderText(paste0("Download ",nrow(visible_crashes())," rows"))
+   
+   output$downloadVisCrashes <- downloadHandler(
+     filename = function() {
+       paste("crash_extract.csv", sep = "") #,format(Sys.time(), "%m-%d-%Y-%h%m%s"), 
+     },
+     content = function(file) {
+       write.csv(visible_crashes(), file, row.names = FALSE)
      }
-     )
+   )
 }
 
 # Run the application 
