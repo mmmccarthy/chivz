@@ -74,7 +74,47 @@ server <- function(input, output) {
   # Get Data
   # Bike Routes from Chicago Data Portal (Updated Feb 2020)
     bikeroutes <- geojsonio::geojson_read("geo/bikeroutes.geojson", what = "sp")
-  
+    
+  # Get Data Portal Data for Ped/Cycle crashes since 2017-01-01 (if no cache available)
+    update_crashes <- function(){
+      crashes_cached <- paste0("./cache/crashes_",format(Sys.time(), "%Y-%m-%d_%H%M%S"))
+      url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
+      start_date <- '2017-01-01' #format(input$crashdate[1])
+      end_date <- '2020-07-17' #format(input$crashdate[2])
+      date <- paste0("crash_date between ","'",start_date,"'"," and ","'",end_date,"'")
+      type <- paste0("first_crash_type == 'PEDESTRIAN' OR first_crash_type == 'PEDALCYCLIST'") #,input$crashtype,"'")
+      query <- paste0(url,"where=",date," AND ",type)
+      crashes <- read.socrata(query, app_token = Sys.getenv("APP_TOKEN"))
+      
+      # Fix Lat/Long for use with Leaflet
+      crashes$latitude = as.numeric(crashes$latitude)
+      crashes$longitude = as.numeric(crashes$longitude)
+      
+      # Eliminate non-Chicago or missing lat/long points
+      crashes <- crashes %>%
+        select(-c(location.coordinates)) %>%
+        filter(latitude > 35 & longitude < -85)
+      
+      write.csv(crashes,crashes_cached)
+      return(crashes)
+    }
+    
+    search_string <- paste0("crashes_",format(Sys.time(), "%Y-%m-%d"),"_*")
+    files_list <- list.files("cache",search_string) # search for a cache file from today
+    
+    if (length(files_list) > 0) {
+      crashes <- read.csv(paste0("cache/",max(files_list))) # get latest cached version
+    } else {
+      # no cached files
+      crashes <- update_crashes()
+    }
+    
+    crash_data <- reactive({
+      crashes %>%
+        mutate(crash_date = as.POSIXct(crash_date)) %>%
+        filter(first_crash_type == input$crashtype, crash_date >= format(input$crashdate[1]) & crash_date <= format(input$crashdate[2]))
+    })
+    
   # Map
     pal <- colorFactor(
       palette = c("#7E5109","#7E5109","#85D8FC","#85D8FC","#ABEBC6","#2ECC71","#FCDE66"),
@@ -121,26 +161,27 @@ server <- function(input, output) {
     })
     
   # Update Crashes based on inputs
-    crash_data <- reactive({
-      url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
-      start_date <- format(input$crashdate[1])
-      end_date <- format(input$crashdate[2])
-      date <- paste0("crash_date between ","'",start_date,"'"," and ","'",end_date,"'")
-      type <- paste0("first_crash_type == '",input$crashtype,"'")
-      query <- paste0(url,"where=",date," AND ",type)
-      crashes <- read.socrata(query, app_token = Sys.getenv("APP_TOKEN"))
-      
-      # Fix Lat/Long for use with Leaflet
-      crashes$latitude = as.numeric(crashes$latitude)
-      crashes$longitude = as.numeric(crashes$longitude)
-      
-      # Eliminate non-Chicago or missing lat/long points
-      crashes <- crashes %>%
-        select(-c(location.coordinates)) %>%
-        filter(latitude > 35 & longitude < -85)
-      return(crashes)
-    })
-    
+
+  #  crash_data <- reactive({
+  #    url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
+  #    start_date <- format(input$crashdate[1])
+  #    end_date <- format(input$crashdate[2])
+  #    date <- paste0("crash_date between ","'",start_date,"'"," and ","'",end_date,"'")
+  #    type <- paste0("first_crash_type == '",input$crashtype,"'")
+  #    query <- paste0(url,"where=",date," AND ",type)
+  #    crashes <- read.socrata(query, app_token = Sys.getenv("APP_TOKEN"))
+  #    
+  #    # Fix Lat/Long for use with Leaflet
+  #    crashes$latitude = as.numeric(crashes$latitude)
+  #    crashes$longitude = as.numeric(crashes$longitude)
+  #    
+  #    # Eliminate non-Chicago or missing lat/long points
+  #    crashes <- crashes %>%
+  #      select(-c(location.coordinates)) %>%
+  #      filter(latitude > 35 & longitude < -85)
+  #    return(crashes)
+  #  })
+  
     observe({
       leafletProxy("map", data = crash_data()) %>%
       addLegend(
