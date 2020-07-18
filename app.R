@@ -8,9 +8,11 @@
 #
 
 library(shiny)
+library(sp)
 library(geojsonio)
 library(RSocrata)
 library(leaflet)
+library(leaflet.extras)
 library(tidyverse)
 library(RColorBrewer)
 library(DT)
@@ -47,20 +49,19 @@ ui <- fluidPage(
         downloadButton("downloadVisCrashes", textOutput("downloadLabel",inline=TRUE)),
         tableOutput("crashsummary") %>% withSpinner()
       )
-  ) #,
-  # fluidRow(
-  #   column(4,
-  #         h4("Time of Day Histogram"),
-  #         plotOutput("todplot") %>% withSpinner()
-  #   ),
-  #   column(4,
-  #          h4("Day of Week Histogram"),
-  #          plotOutput("dowplot") %>% withSpinner()
-  #   ),
-  #   column(4,
-  #          h4("Time of Day Histogram")
-  #   )
-  # )
+  ),
+  fluidRow(
+    column(6,
+          h4("Summary by Community Area"),
+          h5("All crashes in date range and displayed on map"),
+          tableOutput("commsummary")
+    ),
+    column(6,
+           h4("Summary by Ward"),
+           h5("All crashes in date range and displayed on map"),
+           tableOutput("wardsummary")
+    )
+  )
   # fluidRow(
   #   column(12,
   #     h3("Crash Details"),
@@ -73,14 +74,19 @@ server <- function(input, output) {
   
   # Get Data
   # Bike Routes from Chicago Data Portal (Updated Feb 2020)
-    bikeroutes <- geojsonio::geojson_read("geo/bikeroutes.geojson", what = "sp")
+    bikeroutes <- read_sf("geo/bikeroutes.geojson")
+    
+    # Add boundary layers
+    commareas <- read_sf("geo/commareas.geojson")
+    wards <- read_sf("geo/wards2015.geojson")
+    
     
   # Get Data Portal Data for Ped/Cycle crashes since 2017-01-01 (if no cache available)
     update_crashes <- function(){
       crashes_cached <- paste0("./cache/crashes_",format(Sys.time(), "%Y-%m-%d_%H%M%S"))
       url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
       start_date <- '2017-01-01' #format(input$crashdate[1])
-      end_date <- '2020-07-17' #format(input$crashdate[2])
+      end_date <- '2020-07-17' #format(input$crashdate[2]) # TODO update to current day
       date <- paste0("crash_date between ","'",start_date,"'"," and ","'",end_date,"'")
       type <- paste0("first_crash_type == 'PEDESTRIAN' OR first_crash_type == 'PEDALCYCLIST'") #,input$crashtype,"'")
       query <- paste0(url,"where=",date," AND ",type)
@@ -109,8 +115,22 @@ server <- function(input, output) {
       crashes <- update_crashes()
     }
     
+    # Make Crashes sf
+    crashes2 <- st_as_sf(crashes, coords = c("longitude","latitude"))
+    crashes2 <- st_set_crs(crashes2, 4326)
+    
+    # Intersect crashes with Community Areas
+      # add filter for Community Areas 
+    # crashes2$commarea <- apply(st_within(crashes2,commareas),1,) # lengths > 0 # crashes are all within the city, so these are all TRUE
+    crash_in_ca <- st_join(crashes2,commareas, join = st_within)
+    crash_in_ward <- st_join(crashes2,wards,join = st_within)
+    crashes2$commarea <- crash_in_ca$community
+    crashes2$ward <- crash_in_ward$ward
+    #browser()
+    
+    # Filter Crashes for map
     crash_data <- reactive({
-      crashes %>%
+      crashes2 %>%
         mutate(crash_date = as.POSIXct(crash_date)) %>%
         filter(first_crash_type == input$crashtype, crash_date >= format(input$crashdate[1]) & crash_date <= format(input$crashdate[2]))
     })
@@ -150,14 +170,23 @@ server <- function(input, output) {
           # ) %>%
           addCircleMarkers(
             data = crash_data(),
-            lng = ~longitude,
-            lat = ~latitude,
             radius = ~ifelse(most_severe_injury == "FATAL", 10, 4),
             stroke = FALSE,
             fillColor = ~pal2(most_severe_injury),
             fillOpacity = 2,
-            popup = ~paste0("<strong>",street_no," ",street_direction," ",str_to_title(street_name),"</strong><br>Date: ",format(crash_date, format = "%b %d, %Y"),"<br>Type: ",str_to_title(first_crash_type),"<br>Most severe injury: ",str_to_title(most_severe_injury))
-          )
+            popup = ~paste0("<strong>",street_no," ",street_direction," ",str_to_title(street_name),"</strong><br>Date: ",format(crash_date, format = "%b %d, %Y"),"<br>Type: ",str_to_title(first_crash_type),"<br>Most severe injury: ",str_to_title(most_severe_injury),"<br>Community: ",str_to_title(commarea),"<br>Ward: ",str_to_title(ward))
+          ) # %>%
+        #  addDrawToolbar(
+        #    targetGroup = "draw",
+        #    editOptions = editToolbarOptions(
+        #      selectedPathOptions = selectedPathOptions()
+        #    )
+        #  )  %>%
+        #  addLayersControl(
+        #    overlayGroups = c("draw"),
+        #    options = layersControlOptions(collapsed = FALSE)
+        #  ) %>%
+        #  addStyleEditor()
     })
     
   # Update Crashes based on inputs
@@ -186,15 +215,21 @@ server <- function(input, output) {
       leafletProxy("map", data = crash_data()) %>%
       addLegend(
         position = "topright",
-        title = "Crash Injury Types", pal = pal2, values = ~most_severe_injury
+        title = "Crash Injury Types", pal = pal2, values = ~str_to_title(most_severe_injury)
       )
     })
     
     
     visible_crashes <- reactive({
       if (!is.null(input$map_bounds)) {
-        visible <- crash_data() %>%
-          filter(latitude <= input$map_bounds$north & latitude > input$map_bounds$south & longitude < input$map_bounds$east & longitude >= input$map_bounds$west)
+        map_bbox <- st_as_sfc(st_bbox(c(xmin=input$map_bounds$west,xmax=input$map_bounds$east,ymax=input$map_bounds$north,ymin=input$map_bounds$south), crs = st_crs(4326)))
+        crash_df <- crash_data()
+        crash_df$visible <- st_within(crash_df, map_bbox) %>% lengths > 0
+        crash_df <- st_set_geometry(crash_df,NULL) # remove geometry
+        
+        visible <- crash_df %>%
+          filter(visible == TRUE)
+          #filter(latitude <= input$map_bounds$north & latitude > input$map_bounds$south & longitude < input$map_bounds$east & longitude >= input$map_bounds$west)
       return(visible)
       }else{
         return(NULL)
@@ -204,12 +239,36 @@ server <- function(input, output) {
    output$crashsummary <- renderTable(
      if (!is.null(visible_crashes())) {
      visible_crashes() %>%
-           mutate(year = format(crash_date,"%Y")) %>%
+           mutate(year = format(crash_date,"%Y"), most_severe_injury = str_to_title(most_severe_injury)) %>%
            group_by(most_severe_injury,year) %>%
            summarize(total = n())%>%
-           spread(year,total,fill=NA,convert=FALSE)
+           spread(year,total,fill=NA,convert=FALSE) %>%
+           rename("Most Severe Injury" = most_severe_injury)
         }
        )
+   
+   output$commsummary <- renderTable(
+     if (!is.null(visible_crashes())) {
+       visible_crashes() %>%
+         # mutate(year = format(crash_date,"%Y")) %>%
+         #mutate(most_severe_injury = str_to_title(most_severe_injury)) %>%
+         group_by(commarea,most_severe_injury) %>%
+         summarize(total = n())%>%
+         spread(most_severe_injury,total,fill=NA,convert=FALSE)
+     }
+   )
+   
+   output$wardsummary <- renderTable(
+     if (!is.null(visible_crashes())) {
+       visible_crashes() %>%
+         # mutate(year = format(crash_date,"%Y")) %>%
+         #mutate(most_severe_injury = str_to_title(most_severe_injury)) %>%
+         group_by(ward,most_severe_injury) %>%
+         summarize(total = n())%>%
+         spread(most_severe_injury,total,fill=NA,convert=FALSE)
+     }
+   )
+   
    
    # output$todplot <- renderPlot(
    #   if (!is.null(visible_crashes())) {
