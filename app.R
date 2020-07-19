@@ -226,7 +226,7 @@ server <- function(input, output) {
       leafletProxy("map", data = crash_data()) %>%
       addLegend(
         position = "topright",
-        title = "Crash Injury Types", pal = pal2, values = ~str_to_title(most_severe_injury)
+        title = "Crash Injury Types", pal = pal2, values = ~most_severe_injury, labFormat = labelFormat(transform = function(x) str_to_title(x))
       )
     })
     
@@ -262,10 +262,11 @@ server <- function(input, output) {
      if (!is.null(visible_crashes())) {
        visible_crashes() %>%
          # mutate(year = format(crash_date,"%Y")) %>%
-         #mutate(most_severe_injury = str_to_title(most_severe_injury)) %>%
+         mutate(commarea = str_to_title(commarea), most_severe_injury = str_to_title(most_severe_injury)) %>%
          group_by(commarea,most_severe_injury) %>%
          summarize(total = n())%>%
-         spread(most_severe_injury,total,fill=NA,convert=FALSE)
+         spread(most_severe_injury,total,fill=NA,convert=FALSE) %>%
+         rename("Community Area" = commarea)
      }
    )
    
@@ -273,10 +274,11 @@ server <- function(input, output) {
      if (!is.null(visible_crashes())) {
        visible_crashes() %>%
          # mutate(year = format(crash_date,"%Y")) %>%
-         #mutate(most_severe_injury = str_to_title(most_severe_injury)) %>%
+         mutate(most_severe_injury = str_to_title(most_severe_injury)) %>%
          group_by(ward,most_severe_injury) %>%
          summarize(total = n())%>%
-         spread(most_severe_injury,total,fill=NA,convert=FALSE)
+         spread(most_severe_injury,total,fill=NA,convert=FALSE) %>%
+         rename("Ward" = ward)
      }
    )
    
