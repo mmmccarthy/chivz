@@ -29,6 +29,11 @@ ui <- fluidPage(
    
    # Main Map
    leafletOutput("map"),
+   #fluidRow(
+   #  column(6,
+   #     textOutput("status")
+   #         )
+   #),
    
    fluidRow(
       column(4,
@@ -80,10 +85,12 @@ server <- function(input, output) {
     commareas <- read_sf("geo/commareas.geojson")
     wards <- read_sf("geo/wards2015.geojson")
     
-    
   # Get Data Portal Data for Ped/Cycle crashes since 2017-01-01 (if no cache available)
     update_crashes <- function(){
-      crashes_cached <- paste0("./cache/crashes_",format(Sys.time(), "%Y-%m-%d_%H%M%S"))
+      statusmsg <- "Updating crashes from data portal"
+      cat(statusmsg)
+      
+      crashes_cached <- paste0("./cache/crashes_",format(Sys.time(), "%Y-%m-%d_%H%M%S"),".rds")
       url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
       start_date <- '2017-01-01' #format(input$crashdate[1])
       end_date <- '2020-07-17' #format(input$crashdate[2]) # TODO update to current day
@@ -101,36 +108,40 @@ server <- function(input, output) {
         select(-c(location.coordinates)) %>%
         filter(latitude > 35 & longitude < -85)
       
-      write.csv(crashes,crashes_cached)
+      statusmsg <- "Spatial joining crashes"
+      cat(statusmsg)
+      
+      # Make Crashes sf
+      crashes <- st_as_sf(crashes, coords = c("longitude","latitude"))
+      crashes <- st_set_crs(crashes, 4326)
+      
+      # Intersect crashes with Community Areas and Wards
+      crash_in_ca <- st_join(crashes,commareas, join = st_within)
+      crash_in_ward <- st_join(crashes,wards,join = st_within)
+      crashes$commarea <- crash_in_ca$community
+      crashes$ward <- crash_in_ward$ward
+      
+      #write.csv(crashes,crashes_cached)
+      saveRDS(crashes,crashes_cached)
       return(crashes)
     }
     
+    # Get cached crashes or update cache if old
     search_string <- paste0("crashes_",format(Sys.time(), "%Y-%m-%d"),"_*")
     files_list <- list.files("cache",search_string) # search for a cache file from today
     
     if (length(files_list) > 0) {
-      crashes <- read.csv(paste0("cache/",max(files_list))) # get latest cached version
+      #crashes <- read.csv(paste0("cache/",max(files_list))) 
+      # get latest cached version
+      crashes <- readRDS(paste0("cache/",max(files_list)))
     } else {
       # no cached files
       crashes <- update_crashes()
     }
     
-    # Make Crashes sf
-    crashes2 <- st_as_sf(crashes, coords = c("longitude","latitude"))
-    crashes2 <- st_set_crs(crashes2, 4326)
-    
-    # Intersect crashes with Community Areas
-      # add filter for Community Areas 
-    # crashes2$commarea <- apply(st_within(crashes2,commareas),1,) # lengths > 0 # crashes are all within the city, so these are all TRUE
-    crash_in_ca <- st_join(crashes2,commareas, join = st_within)
-    crash_in_ward <- st_join(crashes2,wards,join = st_within)
-    crashes2$commarea <- crash_in_ca$community
-    crashes2$ward <- crash_in_ward$ward
-    #browser()
-    
     # Filter Crashes for map
     crash_data <- reactive({
-      crashes2 %>%
+      crashes %>%
         mutate(crash_date = as.POSIXct(crash_date)) %>%
         filter(first_crash_type == input$crashtype, crash_date >= format(input$crashdate[1]) & crash_date <= format(input$crashdate[2]))
     })
@@ -235,7 +246,7 @@ server <- function(input, output) {
         return(NULL)
       }
     })
-   
+
    output$crashsummary <- renderTable(
      if (!is.null(visible_crashes())) {
      visible_crashes() %>%
