@@ -1,0 +1,77 @@
+---
+title: "Chicago Crashes Metadata"
+output:
+  md_document:
+    variant: markdown
+always_allow_html: yes
+---
+```{r setup, include=FALSE}
+library(dplyr)
+library(DiagrammeR)
+library(jsonlite)
+library(pander)
+```
+
+## About the Data
+
+This app pulls the [Traffic Crashes dataset](https://data.cityofchicago.org/Transportation/Traffic-Crashes-Crashes/85ca-t3if) from Chicago's data portal, which is updated frequently with new crash reports from the Chicago Police Department. Each row represents a crash event, which may involve multiple vehicles, cyclists, or pedestrians (called "vehicles" or "units") and multiple involved people. 
+
+```{r, echo=FALSE,fig.cap="Figure 1: Diagram of crash table IDs"}
+DiagrammeR::grViz("meta/crash_tables.gv")
+```
+
+Each Crash row can be joined to related rows in the Vehicles and People tables, as shown in Figure 1. For example, a crash between two motor vehicles will have one Crash row, two Vehicle rows, and a People row for each occupant. A Pedestrian or Cyclist involved in a crash has both a `Vehicle` record and a `People` record.
+
+Before the city published this open dataset in 2018, crash report summaries were only available through the Illinois Department of Transportation (IDOT). IDOT recieved crash reports from law enforcement agencies across the state and compiled these reports into a database. IDOT only provided the resulting data upon request, often with a year lag between the end of the reporting year and when data was available. As part of Vision Zero, the city committed to shifting to an electronic crash report system that would allow for publishing crash summaries closer to real-time.
+
+## Data Dictionary
+
+### Crashes table
+
+```{r echo=FALSE}
+# Data Portal metadata for People table
+crashes_meta <- fromJSON("https://data.cityofchicago.org/api/views/85ca-t3if.json")
+crashes_columns <- crashes_meta$columns %>%
+  select("Field" = fieldName, "Type" = dataTypeName, "Description" = description)
+
+pander(crashes_columns, justify = c('left', 'left', 'left'), split.tables = Inf)
+```
+
+### Vehicles table
+
+```{r echo=FALSE}
+# Data Portal metadata for People table
+vehicles_meta <- fromJSON("https://data.cityofchicago.org/api/views/68nd-jvt3.json")
+vehicles_columns <- vehicles_meta$columns %>%
+  select("Field" = fieldName, "Type" = dataTypeName, "Description" = description)
+
+pander(vehicles_columns, justify = c('left', 'left', 'left'))
+```
+
+### People table
+
+```{r echo=FALSE}
+# Data Portal metadata for People table
+people_meta <- fromJSON("https://data.cityofchicago.org/api/views/u6pd-qa9d.json")
+people_columns <- people_meta$columns %>%
+  select("Field" = fieldName, "Type" = dataTypeName, "Description" = description)
+
+pander(people_columns, justify = c('left', 'left', 'left'))
+```
+
+## Definitions
+
+```{r}
+```
+
+## Examples
+
+```{r, echo=FALSE}
+DiagrammeR::grViz("meta/crash_example.gv")
+```
+
+## Get the Code
+
+This project's source code is available [on GitHub](https://github.com/mmmccarthy/chivz) and shared under the MIT license.
+
+

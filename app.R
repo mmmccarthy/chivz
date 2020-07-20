@@ -18,61 +18,61 @@ library(RColorBrewer)
 library(DT)
 library(ggplot2)
 library(shinycssloaders)
+library(rmarkdown)
 
 # USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
 readRenviron(file.path("./", ".Renviron"))
 
 options(shiny.error = '')
 
-ui <- fluidPage(
-   titlePanel("Chicago Crash Data"),
-   
-   # Main Map
-   leafletOutput("map"),
-   #fluidRow(
-   #  column(6,
-   #     textOutput("status")
-   #         )
-   #),
-   
-   fluidRow(
-      column(4,
-        h4("Options"),
-        wellPanel(
-          selectInput(inputId = "crashtype",
-                      label = "Choose a crash type:",
-                      choices = c("Pedestrian" = "PEDESTRIAN", "Cyclist" = "PEDALCYCLIST")
-                      ),
-          dateRangeInput("crashdate", "Date range:",
-                         start = "2017-09-01"),
-          p(class="text-muted","All police districts since September 2017. Earliest data since 2015.")
+ui <- navbarPage("Chicago Crash Data",
+  # titlePanel("Chicago Crash Data"),
+   tabPanel("Main",
+     # Main Map
+     fluidRow(
+      leafletOutput("map")
+     ),
+     fluidRow(
+       column(3,
+              h3("About"),
+                a("View the Code on GitHub",href="https://github.com/mmmccarthy/chivz")
+       ),
+       column(3,
+          h4("Options"),
+          wellPanel(
+            selectInput(inputId = "crashtype",
+                        label = "Choose a crash type:",
+                        choices = c("Pedestrian" = "PEDESTRIAN", "Cyclist" = "PEDALCYCLIST")
+                        ),
+            dateRangeInput("crashdate", "Date range:",
+                           start = "2017-09-01"),
+            
+          span(class="text-muted","All police districts since September 2017. Earliest data since 2015.")
+          )
+        ),
+        column(6,
+          h4("Crashes Summarized by Most Severe Injury"),
+          h5("Only counts crashes currently displayed on the map"),
+          downloadButton("downloadVisCrashes", textOutput("downloadLabel",inline=TRUE)),
+          tableOutput("crashsummary") %>% withSpinner()
         )
-      ),
-      column(8,
-        h4("Crashes Summarized by Most Severe Injury"),
-        h5("Only counts crashes currently displayed on the map"),
-        downloadButton("downloadVisCrashes", textOutput("downloadLabel",inline=TRUE)),
-        tableOutput("crashsummary") %>% withSpinner()
-      )
-  ),
-  fluidRow(
-    column(6,
-          h4("Summary by Community Area"),
-          h5("All crashes in date range and displayed on map"),
-          tableOutput("commsummary")
     ),
-    column(6,
-           h4("Summary by Ward"),
-           h5("All crashes in date range and displayed on map"),
-           tableOutput("wardsummary")
+    fluidRow(
+      column(6,
+            h4("Summary by Community Area"),
+            h5("All crashes in date range and displayed on map"),
+            tableOutput("commsummary")
+      ),
+      column(6,
+             h4("Summary by Ward"),
+             h5("All crashes in date range and displayed on map"),
+             tableOutput("wardsummary")
+      )
     )
+  ),
+  tabPanel("About",
+    includeMarkdown("meta.Rmd")
   )
-  # fluidRow(
-  #   column(12,
-  #     h3("Crash Details"),
-  #     DT::dataTableOutput("crashes") %>% withSpinner()
-  #     )
-  # )
 )
 
 server <- function(input, output) {
@@ -107,6 +107,10 @@ server <- function(input, output) {
       crashes <- crashes %>%
         select(-c(location.coordinates)) %>%
         filter(latitude > 35 & longitude < -85)
+      
+      # Reorder injury severity levels
+      crashes$most_severe_injury <- factor(as.character(crashes$most_severe_injury), 
+                                           levels = c("FATAL","INCAPACITATING INJURY","NONINCAPACITATING INJURY","REPORTED, NOT EVIDENT","NO INDICATION OF INJURY")) 
       
       statusmsg <- "Spatial joining crashes"
       cat(statusmsg)
@@ -226,7 +230,10 @@ server <- function(input, output) {
       leafletProxy("map", data = crash_data()) %>%
       addLegend(
         position = "topright",
-        title = "Crash Injury Types", pal = pal2, values = ~most_severe_injury, labFormat = labelFormat(transform = function(x) str_to_title(x))
+        title = "Crash Injury Types",
+        pal = pal2,
+        values = ~most_severe_injury,
+        labFormat = labelFormat(transform = function(x) str_to_title(x))
       )
     })
     
@@ -254,6 +261,7 @@ server <- function(input, output) {
            group_by(most_severe_injury,year) %>%
            summarize(total = n())%>%
            spread(year,total,fill=NA,convert=FALSE) %>%
+           arrange(most_severe_injury) %>%
            rename("Most Severe Injury" = most_severe_injury)
         }
        )
@@ -266,44 +274,25 @@ server <- function(input, output) {
          group_by(commarea,most_severe_injury) %>%
          summarize(total = n())%>%
          spread(most_severe_injury,total,fill=NA,convert=FALSE) %>%
+         select(commarea,str_to_title(levels(visible_crashes()$most_severe_injury))) %>% # BUG unknown columns error when < n crash types visible on map
          rename("Community Area" = commarea)
      }
    )
    
    output$wardsummary <- renderTable(
      if (!is.null(visible_crashes())) {
+       #severity_order <- str_to_title(levels(visible_crashes()$most_severe_injury))
        visible_crashes() %>%
          # mutate(year = format(crash_date,"%Y")) %>%
          mutate(most_severe_injury = str_to_title(most_severe_injury)) %>%
          group_by(ward,most_severe_injury) %>%
          summarize(total = n())%>%
          spread(most_severe_injury,total,fill=NA,convert=FALSE) %>%
-         rename("Ward" = ward)
+         arrange(as.integer(ward)) %>%
+         select("Ward" = ward,str_to_title(levels(visible_crashes()$most_severe_injury))) # BUG unknown columns error when < n crash types visible on map
      }
    )
-   
-   
-   # output$todplot <- renderPlot(
-   #   if (!is.null(visible_crashes())) {
-   #   ggplot(visible_crashes()) + geom_histogram(stat="count",aes(x=as.numeric(crash_hour)))
-   #   }
-   # )
-   # 
-   # output$dowplot <- renderPlot(
-   #   if (!is.null(visible_crashes())) {
-   #     ggplot(visible_crashes()) + geom_histogram(stat="count",aes(x=as.numeric(crash_day_of_week)))
-   #   }
-   # )
-   
-   #output$crashes <- DT::renderDataTable(
-   #  # colnames(c("Crash Date","Street Address","First Crash Type","Most Severe Injury","latitude","longitude")),
-   #  if (!is.null(visible_crashes())) {
-   #    visible_crashes() %>%
-   #      mutate(st_address = paste0(street_no," ",street_direction," ",str_to_title(street_name))) %>%
-   #      select(crash_date,st_address,first_crash_type,most_severe_injury,latitude,longitude)
-   #  }
-   #  )
-   
+
    output$downloadLabel <- renderText(paste0("Download ",nrow(visible_crashes())," rows"))
    
    output$downloadVisCrashes <- downloadHandler(
