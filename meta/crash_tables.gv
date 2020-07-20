@@ -1,0 +1,15 @@
+digraph g {
+  graph [rankdir = "LR"]
+  
+  node [fontsize = "16" shape="record" fontname = "Helvetica"];
+  "crashes" [label = "Crashes | rd_no | crash_date | <f0> crash_record_id | num_units | most_severe_injury | injuries_total | latitude | longitude"];
+  
+  "vehicles" [label = "Vehicles |<f0> crash_unit_id |<f1> crash_record_id | unit_no | unit_type | num_passengers | vehicle_use | DOT_no | ILCC_no"];
+  
+  "people" [label = "People | person_id | person_type |<f0> crash_record_id |<f1> vehicle_id | seat_no | age | sex | airbag_deployed | injury_classification"];
+  
+  edge [arrowhead = "none"];
+  "crashes":f0 -> "vehicles":f1;
+  "crashes":f0 -> "people":f0;
+  "vehicles":f0 -> "people":f1;
+}
