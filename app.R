@@ -18,6 +18,7 @@ library(RColorBrewer)
 library(DT)
 library(ggplot2)
 library(shinycssloaders)
+library(stringr)
 library(rmarkdown)
 
 # USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
@@ -33,16 +34,12 @@ ui <- navbarPage("Chicago Crash Data",
   #       leafletOutput("map")
   #     )
   #),
-  tabPanel("Main",
-     # Main Map
+  tabPanel("Crashes",
+     # Point Map
      fluidRow(
-      leafletOutput("map")
+      leafletOutput("pointmap")
      ),
      fluidRow(
-       column(3,
-              h3("About"),
-                a("View the Code on GitHub",href="https://github.com/mmmccarthy/chivz")
-       ),
        column(3,
           h4("Options"),
           wellPanel(
@@ -52,10 +49,18 @@ ui <- navbarPage("Chicago Crash Data",
                         ),
             dateRangeInput("crashdate", "Date range:",
                            start = "2020-01-01"),
+            selectInput(inputId = "polygontype",
+                        label = "Summarize to:",
+                        choices = c("Wards", "Community Areas")
+                        ),
             
-          span(class="text-muted","All police districts since September 2017. Earliest data since 2015.")
-          )
+            span(class="text-muted","All police districts since September 2017.") #  Earliest data since 2015.
+          ),
+          h4("About"),
+          p("Created by Michael McCarthy using public data from the City of Chicago"),
+          a("View the Code on GitHub",href="https://github.com/mmmccarthy/chivz")
         ),
+       
         column(6,
           h4("Crashes Summarized by Most Severe Injury"),
           h5("Only counts crashes currently displayed on the map"),
@@ -64,17 +69,46 @@ ui <- navbarPage("Chicago Crash Data",
         )
     ),
     fluidRow(
-      column(6,
+      column(12,
             h4("Summary by Community Area"),
             h5("All crashes in date range and displayed on map"),
-            tableOutput("commsummary")
+            DT::dataTableOutput("commsummary")
       ),
-      column(6,
+      column(12,
              h4("Summary by Ward"),
              h5("All crashes in date range and displayed on map"),
-             tableOutput("wardsummary")
+             DT::dataTableOutput("wardsummary")
+      ),
+      column(12,
+             h4("Crashes at Major Intersections"),
+             h5("10 intersections with highest crashes"),
+             DT::dataTableOutput("intxsummary")
       )
     )
+  ),
+  # Polygon/Summary Map
+  tabPanel("Summary",
+      fluidRow(
+        column(2,
+          wellPanel(
+            selectInput(inputId = "polygontype",
+                        label = "Summarize to:",
+                        choices = c("Wards" = "wards2015", "Community Areas" = "commareas")
+            ),
+            selectInput(inputId = "polygoncrashtype",
+                        label = "Choose a crash type:",
+                        choices = c("Pedestrian" = "PEDESTRIAN", "Cyclist" = "PEDALCYCLIST")
+            ),
+            dateRangeInput("polygoncrashdate", "Date range:",
+                           start = "2020-01-01"),
+            
+            span(class="text-muted","All police districts since September 2017.") #  Earliest data since 2015.
+          )
+        )#,
+        # column(10,
+        #   leafletOutput("polygonmap")
+        # )
+      )
   ),
   tabPanel("About",
     includeMarkdown("meta.Rmd")
@@ -91,19 +125,38 @@ server <- function(input, output) {
     commareas <- read_sf("geo/commareas.geojson")
     wards <- read_sf("geo/wards2015.geojson")
     
+    # Major Intersections (point layer)
+    chi_intersections <- read_sf("geo/major_intersections.geojson")
+    
   # Get Data Portal Data for Ped/Cycle crashes since 2017-01-01 (if no cache available)
     update_crashes <- function(){
       statusmsg <- "Updating crashes from data portal"
       cat(statusmsg)
       
+      # Delete caches
+      files_list <- list.files("cache")
+      
+      if (length(files_list) > 0) {
+        # Cache file exists
+        statusmsg <- "Deleting caches"
+        cat(statusmsg)
+        
+        for (i in seq_along(files_list)) {
+          file.remove(files_list[[i]])
+        }
+        
+      }
+      
       crashes_cached <- paste0("./cache/crashes_",format(Sys.time(), "%Y-%m-%d_%H%M%S"),".rds")
       url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
-      start_date <- '2017-01-01' #format(input$crashdate[1])
-      end_date <- '2020-09-30' #format(input$crashdate[2]) # TODO update to current day
+      start_date <- '2018-01-01' #format(input$crashdate[1])
+      end_date <- Sys.Date() #format(input$crashdate[2])
       date <- paste0("crash_date between ","'",start_date,"'"," and ","'",end_date,"'")
       type <- paste0("first_crash_type == 'PEDESTRIAN' OR first_crash_type == 'PEDALCYCLIST'") #,input$crashtype,"'")
       query <- paste0(url,"where=",date," AND ",type)
       crashes <- read.socrata(query, app_token = Sys.getenv("APP_TOKEN"))
+      
+      idot_crashes = readRDS("idot_crashes/IDOT_Crashes_Chicago_2009_2017.rds")
       
       # Fix Lat/Long for use with Leaflet
       crashes$latitude = as.numeric(crashes$latitude)
@@ -135,6 +188,17 @@ server <- function(input, output) {
         count(commarea,most_severe_injury)
       
       # Intersect crashes with buffered Street Segments / Intersections
+      # Project intersections into IL State Plane East (NAD 83 - US Feet)
+      st_crs(chi_intersections) <- 4326
+      chi_intersections <- st_transform(chi_intersections, crs = 3435)
+      chi_intersections_buffer <- st_buffer(chi_intersections,dist=100) # 100 foot buffer
+      
+      # Project crashes
+      crashes_projected <- st_transform(crashes,crs = 3435)
+      
+      # Intersect crashes with buffer / handle overlapping buffers
+      crash_by_intersection <- st_join(crashes_projected,chi_intersections_buffer, join = st_within, largest = TRUE)
+      crashes$intersection <- ifelse(!is.na(crash_by_intersection$STREET_NAM),paste0(str_to_title(crash_by_intersection$STREET_NAM)," / ",str_to_title(crash_by_intersection$STREET_NAM_2)),NA)
       
       #write.csv(crashes,crashes_cached)
       saveRDS(crashes,crashes_cached)
@@ -168,10 +232,46 @@ server <- function(input, output) {
     
     # Filter Crashes for map
     crash_data <- reactive({
-      browser()
       read_crashes() %>%
         mutate(crash_date = as.POSIXct(crash_date)) %>%
         filter(first_crash_type == input$crashtype, crash_date >= format(input$crashdate[1]) & crash_date <= format(input$crashdate[2]))
+    })
+    
+    polygons <- reactive({
+      # get input
+      if (input$polygontype == "Community Areas") {
+        geo = read_sf(paste0("geo/commareas.geojson"))
+        
+        crash_join = read_crashes() %>%
+          filter(first_crash_type == input$polygoncrashtype) %>% # TODO allow for multiple crash type selections
+          # TODO better column names for injury types
+          st_drop_geometry() %>%
+          group_by(commarea, most_severe_injury) %>%
+          summarize(total = n()) %>%
+          spread(most_severe_injury,total,fill=0,convert=FALSE) %>%
+          ungroup()
+        browser()
+        result = left_join(geo, crash_join, by=c("community" = "commarea")) %>%
+          mutate(name = community) #, crash_total = `FATAL` + `INCAPACITATING INJURY` + `NONINCAPACITATING INJURY` + `REPORTED, NOT EVIDENT`)
+      } else if (input$polygontype == "Wards") {
+        geo = read_sf(paste0("geo/wards2015.geojson"))
+        
+        crash_join = read_crashes() %>%
+          filter(first_crash_type == input$polygoncrashtype) %>% # TODO allow for multiple crash type selections
+            # TODO better column names for injury types
+          st_drop_geometry() %>%
+          group_by(ward, most_severe_injury) %>%
+          summarize(total = n()) %>%
+          spread(most_severe_injury,total,fill=0,convert=FALSE) %>%
+          ungroup()
+        
+        result = left_join(geo, crash_join, by=c("ward")) %>%
+          mutate(name = ward) #, crash_total = `FATAL` + `INCAPACITATING INJURY` + `NONINCAPACITATING INJURY` + `REPORTED, NOT EVIDENT`)
+      } else {
+        result = NULL
+      }
+      # browser()
+      return(result)
     })
     
   # Map
@@ -185,7 +285,7 @@ server <- function(input, output) {
       levels = c("","NO INDICATION OF INJURY","REPORTED, NOT EVIDENT","NONINCAPACITATING INJURY","INCAPACITATING INJURY","FATAL")
     )
     
-    output$map <- renderLeaflet({
+    output$pointmap <- renderLeaflet({
         leaflet() %>%
           addProviderTiles(providers$CartoDB.Positron) %>%
           setView(
@@ -208,12 +308,18 @@ server <- function(input, output) {
         #      selectedPathOptions = selectedPathOptions()
         #    )
         #  )  %>%
-        #  addLayersControl(
-        #    overlayGroups = c("draw"),
-        #    options = layersControlOptions(collapsed = FALSE)
-        #  ) %>%
         #  addStyleEditor()
     })
+    
+    #output$polygonmap <- renderLeaflet({
+    #  leaflet() %>%
+    #    addProviderTiles(providers$CartoDB.Positron) %>%
+    #    setView(
+    #      lng = -87.5,
+    #      lat = 41.9,
+    #      zoom = 10
+    #    )
+    # })
     
   # Update Crashes based on inputs
 
@@ -257,24 +363,54 @@ server <- function(input, output) {
     # })
     
     observe({
-      leafletProxy("map", data = crash_data()) %>%
+      leafletProxy("pointmap", data = crash_data()) %>%
         addCircleMarkers(
-         # data = crash_data(),
           radius = ~ifelse(most_severe_injury == "FATAL", 10, 4),
           stroke = FALSE,
           fillColor = ~pal2(most_severe_injury),
           fillOpacity = 2,
-          popup = ~paste0("<strong>",street_no," ",street_direction," ",str_to_title(street_name),"</strong><br>Date: ",format(crash_date, format = "%b %d, %Y"),"<br>Type: ",str_to_title(first_crash_type),"<br>Most severe injury: ",str_to_title(most_severe_injury),"<br>Community: ",str_to_title(commarea),"<br>Ward: ",str_to_title(ward))
+          popup = ~paste0("<strong>",street_no," ",street_direction," ",str_to_title(street_name),"</strong><br>Date: ",format(crash_date, format = "%b %d, %Y"),"<br>Type: ",str_to_title(first_crash_type),"<br>Most severe injury: ",str_to_title(most_severe_injury),"<br>Community: ",str_to_title(commarea),"<br>Ward: ",str_to_title(ward),"<br>Intersection: ",intersection),
+          group = "Crashes",
+          layerId = crash_data()$crash_id
+        ) %>%
+        addPolygons(
+          data = polygons(),
+          stroke = TRUE, #FALSE,
+          # fillColor = ~pal3(crash_total),
+          # fillOpacity = 0,
+          label = ~str_to_title(name),
+          group = input$polygontype,
+          layerId = polygons()$name
         ) %>%
         addLegend(
           position = "topright",
           title = "Crash Injury Types",
           pal = pal2,
           values = ~most_severe_injury,
-          labFormat = labelFormat(transform = function(x) str_to_title(x))
-        )
+          labFormat = labelFormat(transform = function(x) str_to_title(x)),
+          layerId = "crash_legend"
+        ) %>%
+        addLayersControl(
+          overlayGroups = c("Crashes",input$polygontype),
+          options = layersControlOptions(collapsed = FALSE)
+        ) 
     })
     
+    observe({
+      event = input$pointmap_shape_click
+      print(event)
+    })
+    
+   # observe({
+   #   leafletProxy("polygonmap", data = polygons()) %>%
+   #     addPolygons(
+   #       stroke = TRUE, #FALSE,
+   #      # fillColor = ~pal3(crash_total),
+   #       fillOpacity = 2,
+   #       label = ~name
+   #       )
+   #   browser()
+   # })
     
     visible_crashes <- reactive({
       if (!is.null(input$map_bounds)) {
@@ -292,7 +428,7 @@ server <- function(input, output) {
       }
     })
 
-   output$crashsummary <- renderTable(
+   output$crashsummary <-  DT::renderDataTable(
      if (!is.null(visible_crashes())) {
      visible_crashes() %>%
            mutate(year = format(crash_date,"%Y"), most_severe_injury = str_to_title(most_severe_injury)) %>%
@@ -304,7 +440,7 @@ server <- function(input, output) {
         }
        )
    
-   output$commsummary <- renderTable(
+   output$commsummary <-  DT::renderDataTable(
      if (!is.null(visible_crashes())) {
        visible_crashes() %>%
          # mutate(year = format(crash_date,"%Y")) %>%
@@ -317,7 +453,7 @@ server <- function(input, output) {
      }
    )
    
-   output$wardsummary <- renderTable(
+   output$wardsummary <-  DT::renderDataTable(
      if (!is.null(visible_crashes())) {
        #severity_order <- str_to_title(levels(visible_crashes()$most_severe_injury))
        visible_crashes() %>%
@@ -328,6 +464,22 @@ server <- function(input, output) {
          spread(most_severe_injury,total,fill=NA,convert=FALSE) %>%
          arrange(as.integer(ward)) %>%
          select("Ward" = ward,str_to_title(levels(visible_crashes()$most_severe_injury))) # BUG unknown columns error when < n crash types visible on map
+     }
+   )
+   
+   output$intxsummary <- DT::renderDataTable(
+     if (!is.null(crash_data())) {
+       crash_df <-  crash_data()
+       crash_df <- st_set_geometry(crash_df,NULL)
+       
+        crash_df %>%
+         mutate(most_severe_injury = str_to_title(most_severe_injury)) %>%
+         filter(!is.na(intersection)) %>%
+         group_by(intersection,most_severe_injury) %>%
+         summarize(total = n()) %>%
+         arrange(desc(total)) %>%
+         pivot_wider(names_from = most_severe_injury, values_from = total, values_fill = 0) %>%
+         select("Major Intersection" = intersection,str_to_title(levels(crash_df$most_severe_injury)))
      }
    )
 
