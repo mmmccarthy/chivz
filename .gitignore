@@ -2,3 +2,6 @@ rsconnect
 cache
 .Renviron
 _archive
+
+# large files
+idot_crashes/IDOT_Crashes_Chicago_2009_2017.csv
