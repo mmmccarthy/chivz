@@ -298,7 +298,8 @@ crashes_export = crashes_prepped %>%
             longitude = TSCrashLongitude2 # must be negative
         )
             
-saveRDS(crashes_export,"IDOT_Crashes_Chicago_2009_2017.rds")
+ saveRDS(crashes_export,"IDOT_Crashes_Chicago_2009_2017.rds")
+ write.csv(crashes_export,"IDOT_Crashes_Chicago_2009_2017.csv")
 ```
 
 ```{r}
