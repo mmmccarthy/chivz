@@ -8,8 +8,11 @@
 #
 
 library(shiny)
+library(sf)
 library(leaflet)
 library(leaflet.extras)
+library(tidyverse)
+library(stringr)
 
 
 # USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
