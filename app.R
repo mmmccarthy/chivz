@@ -18,9 +18,7 @@ library(stringr)
 # USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
 readRenviron(file.path("./", ".Renviron"))
 
- options(shiny.error = '')
-# for debugging
-# options(shiny.error = browser)
+options(shiny.error = '')
 
 ui <- navbarPage("Chicago Crash Data",
   tabPanel("Summarized Crashes (2009-2019)",
@@ -60,7 +58,12 @@ ui <- navbarPage("Chicago Crash Data",
               textOutput("clickdetails_footer",p)
               )
     )
-  ) #,
+  ),
+  tabPanel("Crashes by Intersection",
+     fluidRow(
+       leafletOutput("map_intersections")
+     )
+  )
   # tabPanel("About",
   #  includeHTML("meta.html") # causes bug!
   # )

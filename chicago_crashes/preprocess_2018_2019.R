@@ -40,6 +40,9 @@ crashes$injuries_incapacitating = as.integer(crashes$injuries_incapacitating)
 crashes$injuries_non_incapacitating = as.integer(crashes$injuries_non_incapacitating)
 crashes$injuries_reported_not_evident = as.integer(crashes$injuries_reported_not_evident)
 
+# Write crash point data
+saveRDS(crashes,"Crashes_2018_2019.rds")
+
 # Prep crash data by wards, community areas
 # Add boundary layers
 commareas <- read_sf("../geo/commareas.geojson")
