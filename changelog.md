@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - 2018-2019 crash data from the Chicago Data Portal
+- Fix issue with IDOT 2015-2017 crash data where the given latitude/longitude was zero or null, but the crash location was given in Illinois State Plane West X/Y coordinates; re-run all affected pre-processed summaries
 
 ### Removed
 - Remove non-existent 31st police district from city's police districts shapefile. This was the label given to Norridge, Harwood Heights, etc.
