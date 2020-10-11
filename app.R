@@ -23,7 +23,7 @@ readRenviron(file.path("./", ".Renviron"))
 # options(shiny.error = browser)
 
 ui <- navbarPage("Chicago Crash Data",
-  tabPanel("IDOT Historical Data (2009-2017)",
+  tabPanel("Summarized Crashes (2009-2019)",
      fluidRow(
       leafletOutput("map")
      ),
@@ -41,20 +41,23 @@ ui <- navbarPage("Chicago Crash Data",
             ),
             selectInput(inputId = "polygonyear",
                         label = "Year:",
-                        choices = c("All","2017","2016","2015","2014","2013","2012","2011","2010","2009")
+                        choices = c("All","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
             )
           ),
           h4("About"),
           p("Created by ",strong("Michael McCarthy")," using public data from the City of Chicago"),
           a("View the Code on GitHub",href="https://github.com/mmmccarthy/chivz"),
           hr(),
+          h4("2018 and 2019 Data"),
+          p("Data for 2018-2019 were obtained from the Chicago Data Portal. This data may include crashes which do not meet IDOT's reporting thresholds and exclude expressway crashes reported by the Illinois State Police."),
           h4("Disclaimer for 2009-2017 Data"),
           p("This tool uses crash report extracts obtained from the Illinois Department of Transportation (IDOT), which requires the following disclaimer to be used:"),
           em("DISCLAIMER: The motor vehicle crash data referenced herein was provided by the Illinois Department of Transportation. Any conclusions drawn from analysis of the aforementioned data are the sole responsibility of the data recipient(s).  Additionally, for coding years 2015 to present, the Bureau of Data Collection uses the exact latitude/longitude supplied by the investigating law enforcement agency to locate crashes. Therefore, location data may vary in previous years since data prior to 2015 was physically located by bureau personnel.")
        ),
        column(9, 
               textOutput("clickdetails_header",h4),
-              tableOutput("clickdetails")
+              tableOutput("clickdetails"),
+              textOutput("clickdetails_footer",p)
               )
     )
   ) #,
@@ -78,19 +81,19 @@ server <- function(input, output) {
     if (input$polygontype == "Community Areas") {
       label_pre = NULL
       geo = read_sf("geo/commareas.geojson")
-      hist_crashes = readRDS("idot_crashes/IDOT_2009_2017_Summary_Community_Areas.rds")
+      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Community_Areas.rds")
       hist_crashes$name = hist_crashes$commarea
       joinflds = c("community" = "name")
     } else if (input$polygontype == "Wards") {
       label_pre = "Ward"
       geo = read_sf("geo/wards2015.geojson")
-      hist_crashes = readRDS("idot_crashes/IDOT_2009_2017_Summary_Wards.rds")
+      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Wards.rds")
       hist_crashes$name = hist_crashes$ward
       joinflds = c("ward" = "name")
     } else if (input$polygontype == "Police Districts") {
       label_pre = "District"
       geo = read_sf("geo/police_districts.geojson")
-      hist_crashes = readRDS("idot_crashes/IDOT_2009_2017_Summary_PoliceDist.rds")
+      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_PoliceDist.rds")
       hist_crashes$name = hist_crashes$police_dist
       joinflds = c("dist_num" = "name")
     }
@@ -142,17 +145,17 @@ server <- function(input, output) {
   polygon_table <- function(itemid) {
     if (input$polygontype == "Community Areas") {
       label_pre = NULL
-      hist_crashes = readRDS("idot_crashes/IDOT_2009_2017_Summary_Community_Areas.rds")
+      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Community_Areas.rds")
       hist_crashes = hist_crashes %>%
         mutate(name = commarea)
     } else if (input$polygontype == "Wards") {
       label_pre = "Ward"
-      hist_crashes = readRDS("idot_crashes/IDOT_2009_2017_Summary_Wards.rds")
+      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Wards.rds")
       hist_crashes = hist_crashes %>%
         mutate(name = ward)
     } else if (input$polygontype == "Police Districts") {
       label_pre = "District"
-      hist_crashes = readRDS("idot_crashes/IDOT_2009_2017_Summary_PoliceDist.rds")
+      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_PoliceDist.rds")
       hist_crashes = hist_crashes %>%
         mutate(name = police_dist)
     }
@@ -197,13 +200,13 @@ server <- function(input, output) {
   observe({
     event = input$map_shape_click
     polygontype = input$polygontype
-    # browser()
     if (!is.null(event) && event$group == polygontype) {
       getDetailTable(event)
     } else {
       # clear details table
       label = substr(polygontype,1,nchar(polygontype)-1) # remove plural form
       output$clickdetails_header = renderText(paste0("Click on a ",label," for more details"))
+      output$clickdetails_footer = NULL
       output$clickdetails = NULL
     }
   })
@@ -212,6 +215,11 @@ server <- function(input, output) {
     if(!is.null(event)) {
       output$clickdetails = renderTable(polygon_table(event$id))
       output$clickdetails_header = renderText(paste0("Annual crash summary for ",str_to_title(event$id)))
+      if(event$group == "Wards" & (input$polygonyear == "All" | as.integer(input$polygonyear) < 2015)) {
+        output$clickdetails_footer = renderText("Ward boundaries changed in 2015. These boundaries are used even for data from before 2015.")
+      } else {
+        output$clickdetails_footer = renderText("")
+      }
     }
   }
   
