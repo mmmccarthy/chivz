@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6] - 2020-10-11
+
+### Added
+
+- 2018-2019 crash data from the Chicago Data Portal
+
+### Removed
+- Remove non-existent 31st police district from city's police districts shapefile. This was the label given to Norridge, Harwood Heights, etc.
+
 ## [0.5] - 2020-10-10
 
 ### Added
@@ -26,5 +35,6 @@ All notable changes to this project will be documented in this file.
 Format from [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 [unreleased]: https://github.com/mmmccarthy/chivz/compare/v0.5...HEAD
+[0.6]: https://github.com/mmmccarthy/chivz/compare/v0.5...v0.6
 [0.5]: https://github.com/mmmccarthy/chivz/compare/v0.1...v0.5
 [0.1]: https://github.com/mmmccarthy/chivz/releases/tag/v0.1
