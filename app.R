@@ -77,6 +77,10 @@ ui <- navbarPage("Chicago Crash Data",
                             choices = c("All","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
                 )
               )
+       ),
+       column(9, 
+              textOutput("clickdetails2_header",h4),
+              tableOutput("clickdetails2")
        )
      )
   )
@@ -330,8 +334,8 @@ server <- function(input, output) {
     } else if (input$intxcrashtype == "Cyclist") {
       hist_crashes = hist_crashes %>%
         filter(first_crash_type == "PEDESTRIAN")
-    } 
-    
+    }
+
     hist_crashes = hist_crashes %>%
       group_by(intxid, intersection) %>%
       summarise(crashes = sum(crashes), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), 
@@ -345,23 +349,85 @@ server <- function(input, output) {
     
     join = join %>%
       mutate(serious_inj_fat = (injuries_incapacitating + injuries_fatal)) %>%
-      filter(serious_inj_fat >= 2) %>% # 75th percentile
-      head(50)
-
+      # filter(serious_inj_fat >= 2) %>% # 75th percentile #TODO fix/automate for annual
+      filter(serious_inj_fat >= median(serious_inj_fat, na.rm = TRUE)) %>%
+      arrange(desc(serious_inj_fat)) %>%
+      head(50) # return max 50 intersections
     return (join)
 
   })
+  
+  intersection_table <- function(itemid) {
+    # instead of summarizing, maybe just query actual crash records?
+    # hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Intersections.rds") #TODO keep orig data available as global objects instead of reading each time
+    hist_crashes = readRDS("crash_summaries/crashes_to_intersection.rds")
+    
+    hist_crashes = hist_crashes %>%
+      st_drop_geometry() %>%
+      mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
+      filter((injuries_incapacitating + injuries_fatal) > 0)
+      
+    
+    if (input$intxyear != "All") {
+      hist_crashes = hist_crashes %>%
+        filter(year == input$intxyear)
+    }
+    
+    if (input$intxcrashtype == "Pedestrian") {
+      hist_crashes = hist_crashes %>%
+        filter(first_crash_type == "PEDESTRIAN")
+    } else if (input$intxcrashtype == "Cyclist") {
+      hist_crashes = hist_crashes %>%
+        filter(first_crash_type == "PEDESTRIAN")
+    }
+    
+    hist_crashes = hist_crashes %>%
+      filter(intersection == itemid) %>%
+      mutate(first_crash_type = str_to_title(first_crash_type), formatted_date = format(crash_date,"%a %b %d, %Y")) %>%
+      #select(Intersection = intersection, "Crash Type" = first_crash_type, "Year" = year, "Tot Fatalities" = injuries_fatal, "Incapacitating Injuries" = injuries_incapacitating, "Tot Injuries" = injuries_total, "Tot Crash Records" = crashes)
+      select(Intersection = intersection, "Crash Type" = first_crash_type, "Date" = formatted_date, "Most Severe Injury" = most_severe_injury, "Tot Fatalities" = injuries_fatal, "Incapacitating Injuries" = injuries_incapacitating, "Tot Injuries" = injuries_total, "Hit and Run flag" = hit_and_run_i, "Primary Contributing Cause" = prim_contributory_cause, "Secondary Contributing Cause" = sec_contributory_cause)
+    
+    return(hist_crashes)
+  }
   
  # intxpal <- reactive({
  #   colorQuantile("YlOrRd",intersections()$serious_inj_fat)
  # })
   
   observe({
-    req(input$open_tab == "Crashes by Intersection")
+    req(input$open_tab == "Crashes by Intersection") # Check that the map's tab is open
   # pal = intxpal()
     leafletProxy("map_intersections", data = intersections()) %>%
-      addCircleMarkers()
+      clearMarkers() %>%
+      addCircleMarkers(
+        radius = 5, #~ifelse(serious_inj_fat > 3, 5, 2), # fix
+        color = "#D54D2A",
+        stroke = FALSE,
+        fillOpacity = 1,
+        popup = ~paste0("<strong>",intersection,"</strong><br>Crashes: ",crashes,"<br>Tot Injuries: ",injuries_total,"<br>Tot Fatalaties: ",injuries_fatal,"<br>Tot Incapacitating Injuries: ",injuries_incapacitating),
+        group = "intxcrashes",
+        layerId = ~label
+      )
   })
+  
+  observe({
+    event = input$map_intersections_marker_click
+    if (!is.null(event) && event$group == "intxcrashes") {
+      getIntxDetailTable(event)
+    } else {
+      # clear details table
+      output$clickdetails2_header = renderText(paste0("Click on an intersection for more details"))
+      #output$clickdetails2_footer = NULL
+      output$clickdetails2 = NULL
+    }
+  })
+  
+  getIntxDetailTable <- function(event){
+    if(!is.null(event)) {
+      output$clickdetails2 = renderTable(intersection_table(event$id))
+      output$clickdetails2_header = renderText(paste0("Fatal/Incapacitating Injury crash records for ",str_to_title(event$id)))
+    }
+  }
   
 }
 
