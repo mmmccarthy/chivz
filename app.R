@@ -21,6 +21,7 @@ readRenviron(file.path("./", ".Renviron"))
 options(shiny.error = '')
 
 ui <- navbarPage("Chicago Crash Data",
+  id = "open_tab",
   tabPanel("Summarized Crashes (2009-2019)",
      fluidRow(
       leafletOutput("map")
@@ -62,6 +63,21 @@ ui <- navbarPage("Chicago Crash Data",
   tabPanel("Crashes by Intersection",
      fluidRow(
        leafletOutput("map_intersections")
+     ),
+     fluidRow(
+       column(3,
+              h4("Options"),
+              wellPanel(
+                selectInput(inputId = "intxcrashtype",
+                            label = "Crash Type:",
+                            choices = c("Ped & Cyclist","Pedestrian","Cyclist")
+                ),
+                selectInput(inputId = "intxyear",
+                            label = "Year:",
+                            choices = c("All","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
+                )
+              )
+       )
      )
   )
   # tabPanel("About",
@@ -73,6 +89,19 @@ server <- function(input, output) {
   output$map <- renderLeaflet({
     leaflet() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
+      setView(
+        lng = -87.5,
+        lat = 41.9,
+        zoom = 10
+      )
+  })
+  
+  output$map_intersections <- renderLeaflet({
+    leaflet() %>%
+      addProviderTiles(providers$CartoDB.Positron, options = providerTileOptions(
+        updateWhenZooming = FALSE,
+        updateWhenIdle = TRUE
+      )) %>%
       setView(
         lng = -87.5,
         lat = 41.9,
@@ -279,6 +308,59 @@ server <- function(input, output) {
       #  overlayGroups = c("Crashes",input$polygontype),
       #  options = layersControlOptions(collapsed = FALSE)
       # ) 
+  })
+  
+  
+  #######################################
+  # Crashes by Intersection
+  #######################################
+  
+  intersections <- reactive({
+    geo = read_sf("geo/all_intersections.geojson")
+    hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Intersections.rds")
+    
+    if (input$intxyear != "All") {
+      hist_crashes = hist_crashes %>%
+        filter(year == input$intxyear)
+    }
+    
+    if (input$intxcrashtype == "Pedestrian") {
+      hist_crashes = hist_crashes %>%
+        filter(first_crash_type == "PEDESTRIAN")
+    } else if (input$intxcrashtype == "Cyclist") {
+      hist_crashes = hist_crashes %>%
+        filter(first_crash_type == "PEDESTRIAN")
+    } 
+    
+    hist_crashes = hist_crashes %>%
+      group_by(intxid, intersection) %>%
+      summarise(crashes = sum(crashes), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), 
+                injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating),
+                injuries_reported_not_evident = sum(injuries_reported_not_evident)) %>%
+      ungroup()
+    
+    hist_crashes$label = hist_crashes$intersection #fix name column issue
+    
+    join = left_join(geo,hist_crashes,c("intxid"))
+    
+    join = join %>%
+      mutate(serious_inj_fat = (injuries_incapacitating + injuries_fatal)) %>%
+      filter(serious_inj_fat >= 2) %>% # 75th percentile
+      head(50)
+
+    return (join)
+
+  })
+  
+ # intxpal <- reactive({
+ #   colorQuantile("YlOrRd",intersections()$serious_inj_fat)
+ # })
+  
+  observe({
+    req(input$open_tab == "Crashes by Intersection")
+  # pal = intxpal()
+    leafletProxy("map_intersections", data = intersections()) %>%
+      addCircleMarkers()
   })
   
 }
