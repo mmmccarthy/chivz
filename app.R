@@ -90,6 +90,9 @@ ui <- navbarPage("Chicago Crash Data",
 )
 
 server <- function(input, output) {
+  
+## Leaflet Outputs 
+  
   output$map <- renderLeaflet({
     leaflet() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
@@ -112,24 +115,44 @@ server <- function(input, output) {
         zoom = 10
       )
   })
+
+## Data - use reactive to load when needed & cache
+  
+  # Geographic Data
+  commareas_geo     = reactive({read_sf("geo/commareas.geojson")})
+  wards_geo         = reactive({read_sf("geo/wards2015.geojson")})
+  police_dist_geo   = reactive({read_sf("geo/police_districts.geojson")})
+  intersections_geo = reactive({read_sf("geo/all_intersections.geojson")})
+  
+  # Polygon Crash Summaries
+  commareas_crashes   = reactive({readRDS("crash_summaries/Summary_2009_2019_Community_Areas.rds")})
+  wards_crashes       = reactive({readRDS("crash_summaries/Summary_2009_2019_Wards.rds")})
+  police_dist_crashes = reactive({readRDS("crash_summaries/Summary_2009_2019_PoliceDist.rds")})
+  
+  # Intersection Crash Data
+  intersection_summary = reactive({readRDS("crash_summaries/Summary_2009_2019_Intersections.rds")})
+  intersection_crashes = reactive({readRDS("crash_summaries/crashes_to_intersection.rds")})
+  
+
+## Polygon Map (first tab)
   
   polygons <- reactive({
     if (input$polygontype == "Community Areas") {
       label_pre = NULL
-      geo = read_sf("geo/commareas.geojson")
-      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Community_Areas.rds")
+      geo = commareas_geo()
+      hist_crashes = commareas_crashes()
       hist_crashes$name = hist_crashes$commarea
       joinflds = c("community" = "name")
     } else if (input$polygontype == "Wards") {
       label_pre = "Ward"
-      geo = read_sf("geo/wards2015.geojson")
-      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Wards.rds")
+      geo = wards_geo()
+      hist_crashes = wards_crashes()
       hist_crashes$name = hist_crashes$ward
       joinflds = c("ward" = "name")
     } else if (input$polygontype == "Police Districts") {
       label_pre = "District"
-      geo = read_sf("geo/police_districts.geojson")
-      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_PoliceDist.rds")
+      geo = police_dist_geo()
+      hist_crashes = police_dist_crashes()
       hist_crashes$name = hist_crashes$police_dist
       joinflds = c("dist_num" = "name")
     }
@@ -181,17 +204,17 @@ server <- function(input, output) {
   polygon_table <- function(itemid) {
     if (input$polygontype == "Community Areas") {
       label_pre = NULL
-      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Community_Areas.rds")
+      hist_crashes = commareas_crashes()
       hist_crashes = hist_crashes %>%
         mutate(name = commarea)
     } else if (input$polygontype == "Wards") {
       label_pre = "Ward"
-      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Wards.rds")
+      hist_crashes = wards_crashes()
       hist_crashes = hist_crashes %>%
         mutate(name = ward)
     } else if (input$polygontype == "Police Districts") {
       label_pre = "District"
-      hist_crashes = readRDS("crash_summaries/Summary_2009_2019_PoliceDist.rds")
+      hist_crashes = police_dist_crashes()
       hist_crashes = hist_crashes %>%
         mutate(name = police_dist)
     }
@@ -320,8 +343,8 @@ server <- function(input, output) {
   #######################################
   
   intersections <- reactive({
-    geo = read_sf("geo/all_intersections.geojson")
-    hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Intersections.rds")
+    geo = intersections_geo()
+    hist_crashes = intersection_summary()
     
     if (input$intxyear != "All") {
       hist_crashes = hist_crashes %>%
@@ -345,22 +368,29 @@ server <- function(input, output) {
     
     hist_crashes$label = hist_crashes$intersection #fix name column issue
     
-    join = left_join(geo,hist_crashes,c("intxid"))
+    join = right_join(geo,hist_crashes,c("intxid"))
     
     join = join %>%
-      mutate(serious_inj_fat = (injuries_incapacitating + injuries_fatal)) %>%
-      # filter(serious_inj_fat >= 2) %>% # 75th percentile #TODO fix/automate for annual
-      filter(serious_inj_fat >= median(serious_inj_fat, na.rm = TRUE)) %>%
+      # Serious Injury + Fatality Score = Incapacitating Injuries + 5x Fatalities
+      mutate(serious_inj_fat = (injuries_incapacitating + (injuries_fatal * 5))) %>%
+      filter(serious_inj_fat > 1)
+    
+    # Outliers have a score higher than 75th percentile of selection
+    quartiles = quantile(join$serious_inj_fat, na.rm = TRUE)
+    join = join %>%
+      mutate(outlier = ifelse(serious_inj_fat >= quartiles['75%'],"yes","no")) %>%
+      filter(outlier == "yes") %>%
       arrange(desc(serious_inj_fat)) %>%
-      head(50) # return max 50 intersections
+      head(100) # return max 100 intersections
+    
+    join$rank = 1:100
+    join$rank_to_radius = 2 + (111-join$rank) %/% 10
+    
     return (join)
-
   })
   
   intersection_table <- function(itemid) {
-    # instead of summarizing, maybe just query actual crash records?
-    # hist_crashes = readRDS("crash_summaries/Summary_2009_2019_Intersections.rds") #TODO keep orig data available as global objects instead of reading each time
-    hist_crashes = readRDS("crash_summaries/crashes_to_intersection.rds")
+    hist_crashes = intersection_crashes()
     
     hist_crashes = hist_crashes %>%
       st_drop_geometry() %>%
@@ -381,13 +411,12 @@ server <- function(input, output) {
         filter(first_crash_type == "PEDESTRIAN")
     }
     
-    hist_crashes = hist_crashes %>%
+    crash_list = hist_crashes %>%
       filter(intersection == itemid) %>%
-      mutate(first_crash_type = str_to_title(first_crash_type), formatted_date = format(crash_date,"%a %b %d, %Y")) %>%
-      #select(Intersection = intersection, "Crash Type" = first_crash_type, "Year" = year, "Tot Fatalities" = injuries_fatal, "Incapacitating Injuries" = injuries_incapacitating, "Tot Injuries" = injuries_total, "Tot Crash Records" = crashes)
-      select(Intersection = intersection, "Crash Type" = first_crash_type, "Date" = formatted_date, "Most Severe Injury" = most_severe_injury, "Tot Fatalities" = injuries_fatal, "Incapacitating Injuries" = injuries_incapacitating, "Tot Injuries" = injuries_total, "Hit and Run flag" = hit_and_run_i, "Primary Contributing Cause" = prim_contributory_cause, "Secondary Contributing Cause" = sec_contributory_cause)
+      mutate(first_crash_type = str_to_title(first_crash_type), formatted_date = format(crash_date,"%a %b %d, %Y"), most_severe_injury = str_to_title(most_severe_injury), serious_inj_fat = paste0(injuries_fatal," / ",injuries_incapacitating)) %>%
+      select(Intersection = intersection, "Crash Type" = first_crash_type, "Date" = formatted_date, "Most Severe Injury" = most_severe_injury, "# Fatal / Incapacitating Injuries" = serious_inj_fat, "Tot Injuries" = injuries_total, "Hit and Run (Y/N)" = hit_and_run_i, "Primary Contributing Cause" = prim_contributory_cause, "Secondary Contributing Cause" = sec_contributory_cause)
     
-    return(hist_crashes)
+    return(crash_list)
   }
   
  # intxpal <- reactive({
@@ -400,11 +429,11 @@ server <- function(input, output) {
     leafletProxy("map_intersections", data = intersections()) %>%
       clearMarkers() %>%
       addCircleMarkers(
-        radius = 5, #~ifelse(serious_inj_fat > 3, 5, 2), # fix
-        color = "#D54D2A",
+        radius = ~rank_to_radius, # returns 1-9, 9 = worst
+        color = ~ifelse(injuries_fatal > 0,"#f03b20","#feb24c"),
         stroke = FALSE,
-        fillOpacity = 1,
-        popup = ~paste0("<strong>",intersection,"</strong><br>Crashes: ",crashes,"<br>Tot Injuries: ",injuries_total,"<br>Tot Fatalaties: ",injuries_fatal,"<br>Tot Incapacitating Injuries: ",injuries_incapacitating),
+        fillOpacity = ~ifelse(injuries_fatal > 0, 1, 0.6),
+        popup = ~paste0("<strong>",intersection," <span class='text-muted'>#",rank,"</span></strong><br>Crashes: ",crashes,"<br>Tot Injuries: ",injuries_total,"<br>Tot Fatalaties: ",injuries_fatal,"<br>Tot Incapacitating Injuries: ",injuries_incapacitating),
         group = "intxcrashes",
         layerId = ~label
       )
