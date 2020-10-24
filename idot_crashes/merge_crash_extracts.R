@@ -209,6 +209,11 @@ for (i in 2:9) {
   crashes_prepped = rbind(crashes_prepped,crashes_colfix[[i]])
 }
 
+# Fix Time
+# some entries have invalid times, such as 00:10 AM - I assume this is 12:10 AM
+crashes_prepped = crashes_prepped %>%
+  mutate(TimeOfCrash = sub("^00:","12:",TimeOfCrash))
+
 # Check lat long coords
 crashes_good_geo = crashes_prepped %>% 
   mutate(TSCrashLatitude = as.numeric(TSCrashLatitude), TSCrashLongitude2 = as.numeric(TSCrashLongitude2)) %>%
@@ -240,8 +245,8 @@ crashes_export = crashes_prepped %>%
   transmute(crash_record_id = paste0("IDOT_",CrashID),
             rd_no = ifelse(Investigating.Agency.Descrip == "City",AgencyReportNumber,NA), 
                   # for crashes investigated by CPD, get RD no
-            crash_date = paste(2000 + CrashYr,sprintf("%02d",CrashMonth),sprintf("%02d",CrashDay),sep = "-"),
-            crash_date = paste0(crash_date," ",format(strptime(TimeOfCrash, "%I:%M %p"), "%H:%M:%S")),
+            crash_date_str = paste(2000 + CrashYr,sprintf("%02d",CrashMonth),sprintf("%02d",CrashDay),sep = "-"),
+            crash_date = strptime(paste0(crash_date_str," ",TimeOfCrash), "%Y-%m-%d %I:%M %p"),
             posted_speed_limit = NA,
             traffic_control_device = TrafficControlDevice,
             device_condition = TrafficControlDeviceCond,
@@ -263,7 +268,7 @@ crashes_export = crashes_prepped %>%
               TypeOfFirstCrash == "7-Other object" ~ "OTHER OBJECT",
               TypeOfFirstCrash == "8-Other non collision" ~ "OTHER NONCOLLISION",
               TypeOfFirstCrash == "9-Parked motor vehicle" ~ "PARKED MOTOR VEHICLE",
-              TRUE ~ str_to_upper(TypeOfFirstCrash)
+              TRUE ~ str_to_upper(TypeOfFirstCrash) # all other cases, convert to uppercase
             ),
             trafficway_type = TrafficwayDescrip,   
             lane_cnt = NumberOfLanes,
@@ -312,6 +317,8 @@ crashes_export = crashes_prepped %>%
             latitude = TSCrashLatitude,
             longitude = TSCrashLongitude2 # must be negative
         )
+# Drop temporary crash date string
+ crashes_export = crashes_export %>% select(-crash_date_str)
             
  saveRDS(crashes_export,"IDOT_Crashes_Chicago_2009_2017.rds")
  write.csv(crashes_export,"IDOT_Crashes_Chicago_2009_2017.csv")
