@@ -25,7 +25,9 @@ files_list <- list.files("cache",search_string) # search for a cache file from t
 if (length(files_list) == 0) {
   # Cache file is old
   last_update = "just now"
+  cat("Updating crashes from Data Portal... \n")
   source("chicago_crashes/update.R", chdir = TRUE)
+  cat("Update complete \n")
 } else {
   cache_file_modified = file.mtime(paste0("cache/",files_list[1])) # file modified date/time
   cache_diff_time = difftime(Sys.time(), cache_file_modified)
@@ -38,9 +40,6 @@ if (length(files_list) == 0) {
   }
     
 }
-
-# USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
-readRenviron(file.path("./", ".Renviron"))
 
 options(shiny.error = '')
 
@@ -65,6 +64,10 @@ ui <- navbarPage("Chicago Crash Data",
             selectInput(inputId = "polygonyear",
                         label = "Year:",
                         choices = c("All","2020","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
+                        # TODO get selection choices from summary file
+                        # TODO range of years
+                        # TODO bar graphs based displayed years
+                        
             )
           ),
           h4("About"),
@@ -80,10 +83,7 @@ ui <- navbarPage("Chicago Crash Data",
           em("DISCLAIMER: The motor vehicle crash data referenced herein was provided by the Illinois Department of Transportation. Any conclusions drawn from analysis of the aforementioned data are the sole responsibility of the data recipient(s).  Additionally, for coding years 2015 to present, the Bureau of Data Collection uses the exact latitude/longitude supplied by the investigating law enforcement agency to locate crashes. Therefore, location data may vary in previous years since data prior to 2015 was physically located by bureau personnel.")
        ),
        column(9,
-              h4(textOutput("clickdetails_header", inline = FALSE),
-                 htmlOutput("clickdetails_warning", container = span, class = "label label-danger")
-                 ),
-              #  htmlOutput("clickdetails_warning", container = span, class = "label label-danger")
+              htmlOutput("clickdetails_header"),
               htmlOutput("clickdetails_footer"),
               tableOutput("clickdetails")
               )
@@ -293,7 +293,7 @@ server <- function(input, output) {
     } else {
       # clear details table
       label = substr(polygontype,1,nchar(polygontype)-1) # remove plural form
-      output$clickdetails_header = renderText(paste0("Click on a ",label," for more details"))
+      output$clickdetails_header = renderUI({ h4(paste0("Click on a ",label," for more details")) })
       output$clickdetails_footer = NULL
       output$clickdetails = NULL
     }
@@ -302,7 +302,7 @@ server <- function(input, output) {
   getDetailTable <- function(event){
     if(!is.null(event)) {
       output$clickdetails = renderTable(polygon_table(event$id))
-      output$clickdetails_header = renderText(paste0("Annual crash summary for ",str_to_title(event$id)))
+      output$clickdetails_header = renderUI({ h4(paste0("Annual crash summary for ",str_to_title(event$id))) })
       if(event$group == "Wards" & (input$polygonyear == "All" | as.integer(input$polygonyear) < 2015)) {
         output$clickdetails_footer = renderText("Ward boundaries changed in 2015. These boundaries are used even for data from before 2015.")
       } else if (event$group == "Community Areas") {
@@ -310,16 +310,14 @@ server <- function(input, output) {
         clicked_commarea = geo %>%
           filter(community == event$id)
         if (!is.na(clicked_commarea$vz_area)) {
-          output$clickdetails_header = renderText(paste0("Annual crash summary for ",str_to_title(event$id)))
-          output$clickdetails_warning = renderUI(HTML(span(paste0(clicked_commarea$vz_area," High Crash Area"))))
+          output$clickdetails_header= renderUI({ h4(paste0("Annual crash summary for ",str_to_title(event$id)), span(paste0(clicked_commarea$vz_area," High Crash Area"), class = "label label-danger")) })
+          
           output$clickdetails_footer = NULL
           # output$clickdetails_footer = renderUI(HTML(paste0(strong(str_to_title(event$id))," is part of the ",strong(clicked_commarea$vz_area)," High Crash Area, as defined in the ",a(href="https://www.chicago.gov/city/en/depts/cdot/supp_info/vision-zero-chicago.html","Vision Zero Chicago")," Action Plan.")))
         } else {
-          output$clickdetails_warning = NULL
           output$clickdetails_footer = NULL
         }
       } else {
-        output$clickdetails_warning = NULL
         output$clickdetails_footer = NULL
       }
     }
@@ -344,13 +342,13 @@ server <- function(input, output) {
       addPolygons(
         #data = polygons(),
         color = "#444444",
-        weight = 1,
-        smoothFactor = 0.5,
+        weight = 1.5,
+        smoothFactor = 0.75,
         opacity = 0.8,
         fillOpacity = 0.5,
         fillColor = ~pal(injrate),
         highlightOptions = highlightOptions(
-          color = "white",
+          color = "white", 
           weight = 2,
           bringToFront = TRUE),
         label = ~str_to_title(label),

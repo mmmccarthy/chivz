@@ -16,6 +16,10 @@ library(sf)
    }
  }
 
+# Data Portal API Key
+# USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
+readRenviron(file.path("../", ".Renviron"))
+ 
 # Download new Chicago Data Portal crashes
 crashes_cached <- paste0("../cache/crashes_",format(Sys.time(), "%Y-%m-%d_%H%M%S"),".rds")
 url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"

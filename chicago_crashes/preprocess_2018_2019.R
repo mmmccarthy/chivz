@@ -7,7 +7,7 @@ library(sf)
 
 # Data Portal API Key
 # USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
-readRenviron(file.path("./", ".Renviron"))
+readRenviron(file.path("../", ".Renviron"))
 
 # Query Data Portal
 url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
