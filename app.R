@@ -15,6 +15,30 @@ library(tidyverse)
 library(stringr)
 
 
+# Run once onload
+# Check for new crash data
+
+# Update Crash summaries
+search_string <- paste0("crashes_",format(Sys.time(), "%Y-%m-%d"),"_*")
+files_list <- list.files("cache",search_string) # search for a cache file from today
+
+if (length(files_list) == 0) {
+  # Cache file is old
+  last_update = "just now"
+  source("chicago_crashes/update.R", chdir = TRUE)
+} else {
+  cache_file_modified = file.mtime(paste0("cache/",files_list[1])) # file modified date/time
+  cache_diff_time = difftime(Sys.time(), cache_file_modified)
+  if(as.numeric(cache_diff_time, units = "hours") < 1) {
+    last_update = "less than an hour ago"
+  } else if (round(as.numeric(cache_diff_time, units = "hours"), digits = 0) == 1) {
+    last_update = "1 hour ago"
+  } else {
+    last_update = paste0(round(as.numeric(cache_diff_time, units = "hours"), digits = 0)," hours ago")
+  }
+    
+}
+
 # USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
 readRenviron(file.path("./", ".Renviron"))
 
@@ -22,7 +46,7 @@ options(shiny.error = '')
 
 ui <- navbarPage("Chicago Crash Data",
   id = "open_tab",
-  tabPanel("Summarized Crashes (2009-2019)",
+  tabPanel("Summarized Crashes 2009-Present",
      fluidRow(
       leafletOutput("map")
      ),
@@ -40,23 +64,28 @@ ui <- navbarPage("Chicago Crash Data",
             ),
             selectInput(inputId = "polygonyear",
                         label = "Year:",
-                        choices = c("All","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
+                        choices = c("All","2020","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
             )
           ),
           h4("About"),
-          p("Created by ",strong("Michael McCarthy")," using public data from the City of Chicago"),
+          p("Created by Michael McCarthy using public data from the City of Chicago and IDOT"),
+          p("Built with R, Shiny, and Leaflet"),
           a("View the Code on GitHub",href="https://github.com/mmmccarthy/chivz"),
           hr(),
-          h4("2018 and 2019 Data"),
-          p("Data for 2018-2019 were obtained from the Chicago Data Portal. This data may include crashes which do not meet IDOT's reporting thresholds and exclude expressway crashes reported by the Illinois State Police."),
+          h4("Crash Data for 2018 to present"),
+          p("Data for 2018-present were obtained from the Chicago Data Portal. This data may include crashes which do not meet IDOT's reporting thresholds and exclude expressway crashes reported by the Illinois State Police."),
+          em({ paste0("Updated ",last_update) }),
           h4("Disclaimer for 2009-2017 Data"),
           p("This tool uses crash report extracts obtained from the Illinois Department of Transportation (IDOT), which requires the following disclaimer to be used:"),
           em("DISCLAIMER: The motor vehicle crash data referenced herein was provided by the Illinois Department of Transportation. Any conclusions drawn from analysis of the aforementioned data are the sole responsibility of the data recipient(s).  Additionally, for coding years 2015 to present, the Bureau of Data Collection uses the exact latitude/longitude supplied by the investigating law enforcement agency to locate crashes. Therefore, location data may vary in previous years since data prior to 2015 was physically located by bureau personnel.")
        ),
-       column(9, 
-              textOutput("clickdetails_header",h4),
-              tableOutput("clickdetails"),
-              textOutput("clickdetails_footer",p)
+       column(9,
+              h4(textOutput("clickdetails_header", inline = FALSE),
+                 htmlOutput("clickdetails_warning", container = span, class = "label label-danger")
+                 ),
+              #  htmlOutput("clickdetails_warning", container = span, class = "label label-danger")
+              htmlOutput("clickdetails_footer"),
+              tableOutput("clickdetails")
               )
     )
   ),
@@ -125,9 +154,9 @@ server <- function(input, output) {
   intersections_geo = reactive({read_sf("geo/all_intersections.geojson")})
   
   # Polygon Crash Summaries
-  commareas_crashes   = reactive({readRDS("crash_summaries/Summary_2009_2019_Community_Areas.rds")})
-  wards_crashes       = reactive({readRDS("crash_summaries/Summary_2009_2019_Wards.rds")})
-  police_dist_crashes = reactive({readRDS("crash_summaries/Summary_2009_2019_PoliceDist.rds")})
+  commareas_crashes   = reactive({readRDS("crash_summaries/Summary_2009_present_Community_Areas.rds")})
+  wards_crashes       = reactive({readRDS("crash_summaries/Summary_2009_present_Wards.rds")})
+  police_dist_crashes = reactive({readRDS("crash_summaries/Summary_2009_present_PoliceDist.rds")})
   
   # Intersection Crash Data
   intersection_summary = reactive({readRDS("crash_summaries/Summary_2009_2019_Intersections.rds")})
@@ -276,8 +305,22 @@ server <- function(input, output) {
       output$clickdetails_header = renderText(paste0("Annual crash summary for ",str_to_title(event$id)))
       if(event$group == "Wards" & (input$polygonyear == "All" | as.integer(input$polygonyear) < 2015)) {
         output$clickdetails_footer = renderText("Ward boundaries changed in 2015. These boundaries are used even for data from before 2015.")
+      } else if (event$group == "Community Areas") {
+        geo = commareas_geo()
+        clicked_commarea = geo %>%
+          filter(community == event$id)
+        if (!is.na(clicked_commarea$vz_area)) {
+          output$clickdetails_header = renderText(paste0("Annual crash summary for ",str_to_title(event$id)))
+          output$clickdetails_warning = renderUI(HTML(span(paste0(clicked_commarea$vz_area," High Crash Area"))))
+          output$clickdetails_footer = NULL
+          # output$clickdetails_footer = renderUI(HTML(paste0(strong(str_to_title(event$id))," is part of the ",strong(clicked_commarea$vz_area)," High Crash Area, as defined in the ",a(href="https://www.chicago.gov/city/en/depts/cdot/supp_info/vision-zero-chicago.html","Vision Zero Chicago")," Action Plan.")))
+        } else {
+          output$clickdetails_warning = NULL
+          output$clickdetails_footer = NULL
+        }
       } else {
-        output$clickdetails_footer = renderText("")
+        output$clickdetails_warning = NULL
+        output$clickdetails_footer = NULL
       }
     }
   }
