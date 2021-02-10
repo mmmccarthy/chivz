@@ -104,7 +104,15 @@ ui <- navbarPage("Chicago Crash Data",
                 selectInput(inputId = "intxyear",
                             label = "Year:",
                             choices = c("All","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
-                )
+                ),
+                sliderInput(inputId = "intxyear2",
+                            label = "Year range:",
+                            min = 2009,
+                            max = 2019,
+                            step = 1,
+                            sep = "",
+                            ticks = FALSE,
+                            value = c(2009,2019))
               )
        ),
        column(9, 
@@ -387,17 +395,22 @@ server <- function(input, output) {
     geo = intersections_geo()
     hist_crashes = intersection_summary()
     
-    if (input$intxyear != "All") {
+    # if (input$intxyear != "All") {
+    #   hist_crashes = hist_crashes %>%
+    #     filter(year == input$intxyear)
+    # }
+    
+    #if (input$intxyear2 != c(2009,2019)){ # update to min/max
       hist_crashes = hist_crashes %>%
-        filter(year == input$intxyear)
-    }
+        filter(year %in% input$intxyear2)
+    # }
     
     if (input$intxcrashtype == "Pedestrian") {
       hist_crashes = hist_crashes %>%
         filter(first_crash_type == "PEDESTRIAN")
     } else if (input$intxcrashtype == "Cyclist") {
       hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDESTRIAN")
+        filter(first_crash_type == "PEDALCYCLIST")
     }
 
     hist_crashes = hist_crashes %>%
@@ -439,17 +452,22 @@ server <- function(input, output) {
       filter((injuries_incapacitating + injuries_fatal) > 0)
       
     
-    if (input$intxyear != "All") {
+    # if (input$intxyear != "All") {
+    #   hist_crashes = hist_crashes %>%
+    #     filter(year == input$intxyear)
+    # }
+    
+    # if (input$intxyear2 != c(2009,2019)){ # update to min/max
       hist_crashes = hist_crashes %>%
-        filter(year == input$intxyear)
-    }
+        filter(year %in% input$intxyear2)
+    # }
     
     if (input$intxcrashtype == "Pedestrian") {
       hist_crashes = hist_crashes %>%
         filter(first_crash_type == "PEDESTRIAN")
     } else if (input$intxcrashtype == "Cyclist") {
       hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDESTRIAN")
+        filter(first_crash_type == "PEDALCYCLIST")
     }
     
     crash_list = hist_crashes %>%
