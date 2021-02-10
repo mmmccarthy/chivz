@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Download 2020 year-to-date data from the Chicago Data Portal and summarize on launch
+- Add crash trends
+
+### Updated
+- Update Readme
+
 ## [0.6] - 2020-10-11
 
 ### Added
@@ -35,7 +43,7 @@ All notable changes to this project will be documented in this file.
 
 Format from [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
-[unreleased]: https://github.com/mmmccarthy/chivz/compare/v0.5...HEAD
+[unreleased]: https://github.com/mmmccarthy/chivz/compare/v0.6...HEAD
 [0.6]: https://github.com/mmmccarthy/chivz/compare/v0.5...v0.6
 [0.5]: https://github.com/mmmccarthy/chivz/compare/v0.1...v0.5
 [0.1]: https://github.com/mmmccarthy/chivz/releases/tag/v0.1

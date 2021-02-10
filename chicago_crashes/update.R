@@ -145,9 +145,9 @@ write.csv(updated_police, "../crash_summaries/Summary_2009_present_PoliceDist.cs
 # Prep crash time-series
 
 # Monthly Deaths, Injuries, and Reported Crashes, by Ped/Cyc and Other crash types
-# monthly_pedcyc_crashes = combined_crashes %>%
-#   mutate(monyr = format(crash_date,"%Y-%m"), pedcyc = ifelse(first_crash_type == "PEDESTRIAN" | first_crash_type == "PEDALCYCLIST",first_crash_type,"other")) %>%
-#   group_by(monyr,pedcyc) %>%
-#   summarize(fatal = sum(injuries_fatal, na.rm = TRUE), serious_inj = sum(injuries_incapacitating, na.rm = TRUE), fatal_serious_inj = fatal + serious_inj, any_inj = sum(injuries_total, injuries_fatal, na.rm = TRUE), crashes = n())
-# 
-# saveRDS(monthly_pedcyc_crashes, "Crashes_2009_2019_monthly_ped_cyc.rds")
+monthly_pedcyc_crashes = updated_crashes %>%
+  mutate(monyr = format(crash_date,"%Y-%m"), pedcyc = ifelse(first_crash_type == "PEDESTRIAN" | first_crash_type == "PEDALCYCLIST",first_crash_type,"other")) %>%
+  group_by(monyr,pedcyc) %>%
+  summarize(fatal = sum(injuries_fatal, na.rm = TRUE), serious_inj = sum(injuries_incapacitating, na.rm = TRUE), fatal_serious_inj = fatal + serious_inj, any_inj = sum(injuries_total, injuries_fatal, na.rm = TRUE), crashes = n())
+
+saveRDS(monthly_pedcyc_crashes, "Crashes_2009_present_monthly_ped_cyc.rds")

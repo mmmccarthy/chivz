@@ -37,7 +37,7 @@ read.socrata(query, app_token = Sys.getenv("APP_TOKEN"))
 
 ## Data Sources
 
-Crash report extracts for 2009 to 2017 were obtained by request from the Illinois Department of Transportation (IDOT). As of September 2017, crash data can be obtained for all police districts on the city's Data Portal. This tool combines IDOT's crash extracts, which are reported by Chicago Police and Illinois State Police on Interstate highways, plus more recent data from Chicago Police to help visualize and summarize crashes over the past 10+ years in Chicago.
+Crash report extracts for 2009 through 2017 were obtained by request from the Illinois Department of Transportation (IDOT). As of September 2017, crash data can be obtained for all police districts on the city's Data Portal. This tool combines IDOT's crash extracts, which are reported by Chicago Police and Illinois State Police on Interstate highways, plus more recent data from Chicago Police to help visualize and summarize crashes over the past 10+ years in Chicago.
 
 
 #### Disclaimer for 2009-2017 Data
@@ -48,11 +48,11 @@ _DISCLAIMER: The motor vehicle crash data referenced herein was provided by the 
 
 ## Summarizing Crash Data
 
-This repo contains summarized IDOT Crash data, already grouped by community area, ward, and police district boundaries for each year of data.
+This repo contains summarized IDOT and Chicago Data Portal crash data, already grouped by community area, ward, and police district boundaries for each year of data.
 
 To re-process these summaries, follow these steps:
 
-1. Process the IDOT yearly extracts (2009-2017) first. Here you could add earlier years or switch to IDOT data for 2018 and later years as it becomes available. Run this from the top level of the repo directory:
+1. Process the IDOT yearly extracts (2009-2017, _not included_) first. Here you could add earlier years or switch to IDOT data for 2018 and later years as it becomes available. Run this from the top level directory of the repo:
 
 	```R
 	source("idot_crashes/merge_crash_extracts.R", chdir = TRUE)
@@ -70,10 +70,10 @@ To re-process these summaries, follow these steps:
 	source("crash_summaries/merge.R", chdir = TRUE)
 	```
 
-4. Finally run **Update.R** to pull year-to-date data from the Chicago Data Portal.
+4. Finally run **Update.R** to pull year-to-date data from the Chicago Data Portal. While the other scripts described here are typically run once to pre-process data, this script is run each time we need to pull an update for current year crash data.
 
 	```R
 	source("chicago_crashes/update.R", chdir = TRUE)
 	```
-This script creates/updates the `Crashes_2009_present_IDOT_and_Chicago.*` and the `Summary_2009_present_*` files containing crash records and summaries for 2009-2019 and 2020 year-to-date.
+This script creates/updates the `crash_summaries/Crashes_2009_present_IDOT_and_Chicago.*` (CSV file too large to include here, RDS is included), `crash_summaries/Summary_2009_present_*`, and `chicago_crashes/Crashes_2009_present_monthly_ped_cyc.rds` files containing crash records and summaries for 2009-2019 and 2020 year-to-date.
       

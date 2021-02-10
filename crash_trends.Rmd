@@ -1,0 +1,124 @@
+---
+title: "Chicago Crash Trends, 2009-present"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Time-series Crash Trends
+
+These trends are based on crash data for Chicago since 2009. Pedestrian and Cyclist ("Pedalcyclist" in crash reports) crashes are reported here, along with all "other" crashes, which include injuries to auto occupants.
+
+```{r echo=FALSE}
+# Read in Monthly Crashes time-series table
+monthly_data = readRDS("./chicago_crashes/Crashes_2009_present_monthly_ped_cyc.rds")
+crashes = readRDS("./crash_summaries/Crashes_2009_present_IDOT_and_Chicago.rds")
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(knitr)
+library(stringr)
+```
+
+### Crashes by Year, 2009-present
+```{r}
+yearly = monthly_data %>%
+  mutate(year = substr(monyr,1,4), crash_label = str_to_title(pedcyc)) %>%
+  group_by(year, crash_label) %>%
+  summarize(fatal = sum(fatal), serious_inj = sum(serious_inj), fatal_serious_inj = sum(fatal_serious_inj), any_inj = sum(any_inj), crashes = sum(crashes)) %>%
+  arrange(year, desc(fatal)) %>%
+  ungroup()
+
+plot = ggplot(yearly, aes(x = year, y = fatal, group = crash_label)) + 
+  geom_col(aes(fill = crash_label)) + 
+  labs(title = "Annual Fatalities by Crash Type",x = NULL,y="Fatalities", color = "Crash Type") + theme_bw()
+
+plot
+```
+
+```{r}
+# Annual Fatalities by Crash Type
+annual_cyc = yearly %>% 
+  select(year,crash_label,fatal) %>%
+  # filter(crash_label == "Pedalcyclist") %>%
+  pivot_wider(names_from = crash_label, values_from = fatal) %>%
+  mutate(
+    # % change all fatalities
+    total = Other + Pedestrian + Pedalcyclist,
+    total_diff = total - (lag(Other) + lag(Pedestrian) + lag(Pedalcyclist)),
+    total_chg = ifelse(!year %in% c(2009, format(Sys.Date(), "%Y")),paste(format(round((total_diff / total) * 100, 1), nsmall=0, big.mark=","), "%", sep=""),NA),
+    
+    # % change cyclist fatalities
+    active = Pedestrian + Pedalcyclist,
+    active_diff = (Pedestrian + Pedalcyclist) - (lag(Pedestrian) + lag(Pedalcyclist)),
+    active_chg = ifelse(!year %in% c(2009, format(Sys.Date(), "%Y")),paste(format(round((active_diff / active) * 100, 1), nsmall=0, big.mark=","), "%", sep=""),NA)
+         )
+
+kable(annual_cyc,
+      align = rep("r",10),
+      col.names = c("Year",
+                    "Auto",
+                    "Pedestrian",
+                    "Cyclist",
+                    "Total",
+                    "$\\Delta$ Total",
+                    "% Change",
+                    "Ped + Cyc",
+                    "$\\Delta$ Ped + Cyc",
+                    "% Change"),
+      caption = "Annual Fatalities by Crash Type")
+```
+
+### Crashes by Month, 2009-present
+
+If we look at crashes in monthly slices, we can identify seasonal trends, months with most and least fatalities and serious injuries, and what the "average" month looks like. This can help us assess progress toward Vision Zero goals or particularly bad months for people walking and biking.
+
+These data are very noisy, jumping around from month to month with few clear trends, so I've added a 3-month rolling average (darker line) to the following plots of monthly data. The actual counts are represented by lighter dots.
+
+```{r}
+# Worst month of Fatalities by Crash Type
+table1 = monthly_data %>% group_by(pedcyc) %>% filter(fatal == max(fatal))
+kable(table1, caption = "Months with Most Fatalities by Crash Type")
+
+# Worst month of Serious Injuries by Crash Type
+table2 = monthly_data %>% group_by(pedcyc) %>% filter(serious_inj == max(serious_inj))
+kable(table2, caption = "Months with Most Serious Injuries by Crash Type")
+```
+
+```{r}
+monthly = monthly_data %>%
+  group_by(pedcyc) %>%
+  mutate(date = base::as.Date(paste0(monyr,"-01"), format = "%Y-%m-%d")) %>%
+  mutate(crash_label = str_to_title(pedcyc)) %>%
+  mutate(fatal_3mo = zoo::rollmean(fatal, k = 3, fill = NA), seriousinj_3mo = zoo::rollmean(serious_inj, k = 3, fill = NA))
+  
+#plot = ggplot(monthly) + geom_area(aes(monyr, fatal, group = pedcyc, color = pedcyc, fill = pedcyc)) + geom_line(aes(monyr, fatal_3mo, group = pedcyc, color = pedcyc))
+
+plot = ggplot(monthly) + geom_point(aes(date,fatal, color = crash_label), alpha = 0.25) + geom_line(aes(date, fatal_3mo, group = crash_label, color = crash_label), size = 1) + labs(title = "3-month Rolling Average of Fatalities by Crash Type",x = NULL,y="Fatalities") + scale_x_date(date_labels = "%Y", date_breaks = "1 year") + theme_bw() + facet_grid(crash_label ~ ., scales="free_y")
+
+plot
+```
+
+```{r}
+plot2 = ggplot(monthly) + geom_point(aes(date,serious_inj, color = crash_label), alpha = 0.25) + geom_line(aes(date, seriousinj_3mo, group = crash_label, color = crash_label), size = 1) + labs(title = "3-month Rolling Average of Serious Injuries by Crash Type",x = NULL,y="Serious Injury (Incapacitating)") + scale_x_date(date_labels = "%m/%y", date_breaks = "1 year") + theme_bw() + facet_grid(crash_label ~ ., scales="free_y")
+
+plot2
+```
+
+I want to look at the summer of 2016, which felt like a particularly bad time to be a cyclist in Chicago. That summer saw a string of young women and non-binary bicyclists struck and killed, particularly by large trucks. What I felt that summer does not appear as an outlier in this data, however. It may be a reflection that media coverage of these crashes was more intense than usual because Virginia Murray was the first U.S. death on a bikeshare (Divvy) bike and the string of young (and white) people killed that summer became a trend story: what's going on with all these cyclist deaths? But if you go strictly by the data, it isn't out of the ordinary to have 1 or 2 bike fatalities in a summer month in Chicago. The question is whether we've ignored similar trends because other deaths were ignored or if monthly data hides particularly bad summers. My hunch is it's the former.
+
+```{r}
+table_summer16 = monthly_data %>% filter(pedcyc == "PEDALCYCLIST", monyr %in% c("2016-05","2016-06","2016-07","2016-08","2016-09"))
+kable(table_summer16, caption = "Summer 2016 Cyclist Crashes")
+```
+In June 2016, [Blaine Klingenberg](https://www.chicagoreader.com/chicago/klingenberg-fatal-crash-red-light-witness-reports/Content?oid=22678194) was struck and killed by a tour bus driver at Michigan and Oak.  
+
+In July, [Virginia Murray](https://chi.streetsblog.org/2016/07/01/police-divvy-rider-critically-injured-at-belmont-and-sacramento/) was killed by a right-turning truck driver at Belmont and Scramento.
+
+In August, [Lisa Kuivinen](https://chi.streetsblog.org/2016/08/16/lisa-kuivinen-20-struck-and-killed-while-biking-on-milwaukee-avenue/) was killed by a truck driver on Milwaukee Avenue, which has protected bike lanes. [Francisco Cruz](https://chi.streetsblog.org/2016/08/19/cyclist-francisco-cruz-remembered-as-a-good-samaritan-driver-still-at-large/) was killed by a hit-and-run driver. 
+
+Then in September, [Anastasia Kondrasheva](https://chi.streetsblog.org/2016/09/27/woman-killed-in-yesterdays-biketruck-crash-identified-as-anastasia-kondrasheva-23/) was killed by a right-turning truck driver at Addison and Damen.
