@@ -1,6 +1,7 @@
 rsconnect
 cache
 .Renviron
+.RData
 .Rhistory
 _archive
 
