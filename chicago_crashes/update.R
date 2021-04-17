@@ -8,13 +8,16 @@ library(sf)
 # Delete caches
  files_list <- list.files("../cache")
  
- if (length(files_list) > 0) {
-   # Cache file exists
-   for (i in seq_along(files_list)) {
-     # BUG files_list only lists file names (no path info)
-     file.remove(paste0("../cache/",files_list[[i]]))
-   }
- }
+# if (length(files_list) > 0) {
+#   # Cache file exists
+#   for (i in seq_along(files_list)) {
+#     file.remove(paste0("../cache/",files_list[[i]]))
+#   }
+# }
+# TODO -  split latest cache file into date + time -> format for start_date
+# list.files("cache")
+# [1] "crashes_2021-02-09_225133.rds"
+# then merge results and rename with current timestamp
 
 # Data Portal API Key
 # USE .Renviron in this directory or Sys.setenv("APP_TOKEN" = "YOUR SOCRATA TOKEN")
@@ -23,7 +26,7 @@ readRenviron(file.path("../", ".Renviron"))
 # Download new Chicago Data Portal crashes
 crashes_cached <- paste0("../cache/crashes_",format(Sys.time(), "%Y-%m-%d_%H%M%S"),".rds")
 url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
-start_date <- '2020-01-01'
+start_date <- '2020-01-01' #TODO reduce data download to just records since last cache
 end_date <- Sys.Date()
 date <- paste0("crash_date between ","'",start_date,"'"," and ","'",end_date,"'")
 query <- paste0(url,"where=",date)

@@ -1,11 +1,7 @@
-## Pre-process crashes by intersection 2009-2019
+## Pre-process crashes by intersection 2009-present
 
-
-# Merge IDOT and Chicago crash records
-idot = readRDS("../idot_crashes/IDOT_Crashes_Chicago_2009_2017.rds")
-chicago = readRDS("../chicago_crashes/Crashes_2018_2019.rds")
-chicago$crash_date = as.character(chicago$crash_date) # weird date shenanigans
-crashes = rbind(idot,chicago)
+# Merged IDOT and Chicago crash records
+crashes = readRDS("Crashes_2009_present_IDOT_and_Chicago.rds")
 
 # Create SF and Project
 crashes = crashes %>%
@@ -14,7 +10,7 @@ crashes = crashes %>%
 crashes = st_as_sf(crashes, coords = c("longitude","latitude"))
 crashes = st_set_crs(crashes, 4326)
 
-# Project intersections into IL State Plane East (NAD 83 - US Feet)
+# Project intersections into IL State Plane East (NAD 83 - US Feet) and add 150 ft buffer
 chi_intersections = read_sf("../geo/all_intersections.geojson")
 
 # # add unique IDs (run once)
@@ -24,7 +20,7 @@ chi_intersections = read_sf("../geo/all_intersections.geojson")
 
 st_crs(chi_intersections) = 4326
 chi_intersections = st_transform(chi_intersections, crs = 3435)
-chi_intersections_buffer = st_buffer(chi_intersections,dist=100) # 100 foot buffer
+chi_intersections_buffer = st_buffer(chi_intersections,dist=150)
 
 # Project crashes
 crashes_projected = st_transform(crashes,crs = 3435)
@@ -46,4 +42,4 @@ intersection_summary = crashes %>%
 # Save results
 
 saveRDS(crashes,"crashes_to_intersection.rds")
-saveRDS(intersection_summary,"Summary_2009_2019_Intersections.rds")
+saveRDS(intersection_summary,"Summary_2009_present_Intersections.rds")

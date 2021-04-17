@@ -6,6 +6,12 @@
 #
 #    http://shiny.rstudio.com/
 #
+###############################################
+#
+# Chicago Vision Zero Dashboard
+# By Michael McCarthy, updated 4-17-2021
+#
+###############################################
 
 library(shiny)
 library(sf)
@@ -27,6 +33,7 @@ if (length(files_list) == 0) {
   last_update = "just now"
   cat("Updating crashes from Data Portal... \n")
   source("chicago_crashes/update.R", chdir = TRUE)
+  source("crash_summaries/intersections.R", chdir = TRUE)
   cat("Update complete \n")
 } else {
   cache_file_modified = file.mtime(paste0("cache/",files_list[1])) # file modified date/time
@@ -40,6 +47,13 @@ if (length(files_list) == 0) {
   }
     
 }
+
+# Get up-to-date range of years in data
+summary_commareas = readRDS("crash_summaries/Summary_2009_present_Community_Areas.rds")
+year_range = as.numeric(summary_commareas$year)
+start_year = min(year_range, na.rm = T)
+end_year = max(year_range, na.rm = T)
+years = as.character(c(start_year:end_year))
 
 options(shiny.error = '')
 
@@ -61,14 +75,17 @@ ui <- navbarPage("Chicago Crash Data",
                         label = "Summarize to:",
                         choices = c("Community Areas", "Wards", "Police Districts")
             ),
-            selectInput(inputId = "polygonyear",
-                        label = "Year:",
-                        choices = c("All","2020","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
-                        # TODO get selection choices from summary file
-                        # TODO range of years
-                        # TODO bar graphs based displayed years
-                        
+            sliderInput(inputId = "polygonyears",
+                        label = "Year range:",
+                        min = start_year,
+                        max = end_year,
+                        step = 1,
+                        sep = "",
+                        ticks = FALSE,
+                        value = c(start_year,end_year)
             )
+            # TODO get selection choices from summary file
+            # TODO bar graphs based displayed years
           ),
           h4("About"),
           p("Created by Michael McCarthy using public data from the City of Chicago and IDOT"),
@@ -101,10 +118,14 @@ ui <- navbarPage("Chicago Crash Data",
                             label = "Crash Type:",
                             choices = c("Ped & Cyclist","Pedestrian","Cyclist")
                 ),
-                selectInput(inputId = "intxyear",
-                            label = "Year:",
-                            choices = c("All","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
-                )
+                sliderInput(inputId = "intxyears",
+                            label = "Year range:",
+                            min = start_year,
+                            max = end_year,
+                            step = 1,
+                            sep = "",
+                            ticks = FALSE,
+                            value = c(start_year,end_year))
               )
        ),
        column(9, 
@@ -159,7 +180,7 @@ server <- function(input, output) {
   police_dist_crashes = reactive({readRDS("crash_summaries/Summary_2009_present_PoliceDist.rds")})
   
   # Intersection Crash Data
-  intersection_summary = reactive({readRDS("crash_summaries/Summary_2009_2019_Intersections.rds")})
+  intersection_summary = reactive({readRDS("crash_summaries/Summary_2009_present_Intersections.rds")})
   intersection_crashes = reactive({readRDS("crash_summaries/crashes_to_intersection.rds")})
   
 
@@ -187,10 +208,8 @@ server <- function(input, output) {
     }
     # TODO add Census Tracts -> other demographics
     
-      if (input$polygonyear != "All") {
-        hist_crashes = hist_crashes %>%
-          filter(year == input$polygonyear)
-      }
+      hist_crashes = hist_crashes %>%
+        filter(as.numeric(year) >= input$polygonyears[1] & as.numeric(year) <= input$polygonyears[2])
 
       if (input$polygoncrashtype != "All Crash Types") {
         hist_crashes = hist_crashes %>%
@@ -248,10 +267,8 @@ server <- function(input, output) {
         mutate(name = police_dist)
     }
     
-    if (input$polygonyear != "All") {
-      hist_crashes = hist_crashes %>%
-        filter(year == input$polygonyear)
-    }
+    hist_crashes = hist_crashes %>%
+      filter(year >= input$polygonyears[1] & year <= input$polygonyears[2])
     
     if (input$polygoncrashtype != "All Crash Types") {
       hist_crashes = hist_crashes %>%
@@ -303,7 +320,7 @@ server <- function(input, output) {
     if(!is.null(event)) {
       output$clickdetails = renderTable(polygon_table(event$id))
       output$clickdetails_header = renderUI({ h4(paste0("Annual crash summary for ",str_to_title(event$id))) })
-      if(event$group == "Wards" & (input$polygonyear == "All" | as.integer(input$polygonyear) < 2015)) {
+      if(event$group == "Wards" & input$polygonyears[1] <= 2015) {
         output$clickdetails_footer = renderText("Ward boundaries changed in 2015. These boundaries are used even for data from before 2015.")
       } else if (event$group == "Community Areas") {
         geo = commareas_geo()
@@ -386,18 +403,16 @@ server <- function(input, output) {
   intersections <- reactive({
     geo = intersections_geo()
     hist_crashes = intersection_summary()
-    
-    if (input$intxyear != "All") {
-      hist_crashes = hist_crashes %>%
-        filter(year == input$intxyear)
-    }
+
+    hist_crashes = hist_crashes %>%
+      filter(year >= as.numeric(input$intxyears[1]) & year <= as.numeric(input$intxyears[2]))
     
     if (input$intxcrashtype == "Pedestrian") {
       hist_crashes = hist_crashes %>%
         filter(first_crash_type == "PEDESTRIAN")
     } else if (input$intxcrashtype == "Cyclist") {
       hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDESTRIAN")
+        filter(first_crash_type == "PEDALCYCLIST")
     }
 
     hist_crashes = hist_crashes %>%
@@ -437,19 +452,16 @@ server <- function(input, output) {
       st_drop_geometry() %>%
       mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
       filter((injuries_incapacitating + injuries_fatal) > 0)
-      
     
-    if (input$intxyear != "All") {
-      hist_crashes = hist_crashes %>%
-        filter(year == input$intxyear)
-    }
+    hist_crashes = hist_crashes %>%
+      filter(as.numeric(year) >= input$intxyears[1] & as.numeric(year) <= input$intxyears[2])
     
     if (input$intxcrashtype == "Pedestrian") {
       hist_crashes = hist_crashes %>%
         filter(first_crash_type == "PEDESTRIAN")
     } else if (input$intxcrashtype == "Cyclist") {
       hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDESTRIAN")
+        filter(first_crash_type == "PEDALCYCLIST")
     }
     
     crash_list = hist_crashes %>%
