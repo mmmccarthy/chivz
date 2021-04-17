@@ -46,6 +46,7 @@ saveRDS(crashes,"Crashes_2018_2019.rds")
 # Prep crash data by wards, community areas
 # Add boundary layers
 commareas <- read_sf("../geo/commareas.geojson")
+tracts <- read_sf("../geo/tracts2010.geojson")
 wards <- read_sf("../geo/wards2015.geojson")
 police <- read_sf("../geo/police_districts.geojson")
 
@@ -60,9 +61,11 @@ crashes_geo <- st_set_crs(crashes_geo, 4326)
 
 # Intersect and add boundary IDs to crash records
 crash_in_ca <- st_join(crashes_geo,commareas, join = st_within)
+crash_in_tract <- st_join(crashes_geo,tracts, join = st_within)
 crash_in_ward <- st_join(crashes_geo,wards,join = st_within)
 crash_in_police <- st_join(crashes_geo,police,join = st_within)
 crashes_geo$commarea <- crash_in_ca$community.x
+crashes_geo$tract <- crash_in_tract$GEOID10
 crashes_geo$ward <- crash_in_ward$ward
 crashes_geo$police_dist <- crash_in_police$dist_num
 
@@ -73,6 +76,14 @@ ca_summary = crashes_geo %>%
   filter(!is.na(most_severe_injury)) %>% # Data portal has some non-injury crashes where all of the summary fields are NA
   mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
   group_by(commarea, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+  summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
+
+# Tracts
+tract_summary = crashes_geo %>%
+  st_drop_geometry() %>%
+  filter(!is.na(most_severe_injury)) %>% # Data portal has some non-injury crashes where all of the summary fields are NA
+  mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
+  group_by(tract, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
   summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
 # Wards
@@ -95,6 +106,9 @@ police_summary = crashes_geo %>%
 
 saveRDS(ca_summary, "Chicago_2018_2019_Summary_Community_Areas.rds")
 write.csv(ca_summary, "Chicago_2018_2019_Summary_Community_Areas.csv")
+
+saveRDS(tract_summary, "Chicago_2018_2019_Summary_Tracts.rds")
+write.csv(tract_summary, "Chicago_2018_2019_Summary_Tracts.csv")
 
 saveRDS(ward_summary, "Chicago_2018_2019_Summary_Wards.rds")
 write.csv(ward_summary, "Chicago_2018_2019_Summary_Wards.csv")

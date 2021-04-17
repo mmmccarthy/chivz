@@ -73,7 +73,7 @@ ui <- navbarPage("Chicago Crash Data",
             ),
             selectInput(inputId = "polygontype",
                         label = "Summarize to:",
-                        choices = c("Community Areas", "Wards", "Police Districts")
+                        choices = c("Community Areas", "Tracts", "Wards", "Police Districts")
             ),
             sliderInput(inputId = "polygonyears",
                         label = "Year range:",
@@ -170,12 +170,14 @@ server <- function(input, output) {
   
   # Geographic Data
   commareas_geo     = reactive({read_sf("geo/commareas.geojson")})
+  tracts_geo     = reactive({read_sf("geo/tracts2010.geojson")})
   wards_geo         = reactive({read_sf("geo/wards2015.geojson")})
   police_dist_geo   = reactive({read_sf("geo/police_districts.geojson")})
   intersections_geo = reactive({read_sf("geo/all_intersections.geojson")})
   
   # Polygon Crash Summaries
   commareas_crashes   = reactive({readRDS("crash_summaries/Summary_2009_present_Community_Areas.rds")})
+  tracts_crashes       = reactive({readRDS("crash_summaries/Summary_2009_present_Tracts.rds")})
   wards_crashes       = reactive({readRDS("crash_summaries/Summary_2009_present_Wards.rds")})
   police_dist_crashes = reactive({readRDS("crash_summaries/Summary_2009_present_PoliceDist.rds")})
   
@@ -193,6 +195,12 @@ server <- function(input, output) {
       hist_crashes = commareas_crashes()
       hist_crashes$name = hist_crashes$commarea
       joinflds = c("community" = "name")
+    } else if (input$polygontype == "Tracts") {
+      label_pre = "Census Tract"
+      geo = tracts_geo()
+      hist_crashes = tracts_crashes()
+      hist_crashes$name = hist_crashes$tract
+      joinflds = c("GEOID10" = "name")
     } else if (input$polygontype == "Wards") {
       label_pre = "Ward"
       geo = wards_geo()
@@ -255,6 +263,11 @@ server <- function(input, output) {
       hist_crashes = commareas_crashes()
       hist_crashes = hist_crashes %>%
         mutate(name = commarea)
+    } else if (input$polygontype == "Tracts") {
+      label_pre = "Census Tract"
+      hist_crashes = tracts_crashes()
+      hist_crashes = hist_crashes %>%
+        mutate(name = tract)
     } else if (input$polygontype == "Wards") {
       label_pre = "Ward"
       hist_crashes = wards_crashes()

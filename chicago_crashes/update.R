@@ -58,6 +58,7 @@ saveRDS(crashes,crashes_cached)
 # Prep crash data by wards, community areas
 # Add boundary layers
 commareas <- read_sf("../geo/commareas.geojson")
+tracts <- read_sf("../geo/tracts2010.geojson")
 wards <- read_sf("../geo/wards2015.geojson")
 police <- read_sf("../geo/police_districts.geojson")
 ## Hold on intersections for now
@@ -75,9 +76,11 @@ crashes_geo <- st_set_crs(crashes_geo, 4326)
 
 # Intersect and add boundary IDs to crash records
 crash_in_ca <- st_join(crashes_geo,commareas, join = st_within)
+crash_in_tract <- st_join(crashes_geo,tracts, join = st_within)
 crash_in_ward <- st_join(crashes_geo,wards,join = st_within)
 crash_in_police <- st_join(crashes_geo,police,join = st_within)
 crashes_geo$commarea <- crash_in_ca$community.x
+crashes_geo$tract <- crash_in_tract$GEOID10
 crashes_geo$ward <- crash_in_ward$ward
 crashes_geo$police_dist <- crash_in_police$dist_num
 
@@ -88,6 +91,14 @@ ca_summary = crashes_geo %>%
   filter(!is.na(most_severe_injury)) %>% # Data portal has some non-injury crashes where all of the summary fields are NA
   mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
   group_by(commarea, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+  summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
+
+# Tracts
+tract_summary = crashes_geo %>%
+  st_drop_geometry() %>%
+  filter(!is.na(most_severe_injury)) %>% # Data portal has some non-injury crashes where all of the summary fields are NA
+  mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
+  group_by(tract, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
   summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
 # Wards
@@ -111,6 +122,8 @@ police_summary = crashes_geo %>%
 saveRDS(ca_summary, "Chicago_2020_Summary_Community_Areas.rds")
 #write.csv(ca_summary, "Chicago_2020_Summary_Community_Areas.csv")
 
+saveRDS(tract_summary, "Chicago_2020_Summary_Tracts.rds")
+
 saveRDS(ward_summary, "Chicago_2020_Summary_Wards.rds")
 #write.csv(ward_summary, "Chicago_2020_Summary_Wards.csv")
 
@@ -122,11 +135,13 @@ saveRDS(police_summary, "Chicago_2020_Summary_PoliceDist.rds")
 
 # Load Merged 2009-2019 Crashes
 crashes_2019 = readRDS("../crash_summaries/Crashes_2009_2019_IDOT_and_Chicago.rds")
+tracts_2019  = readRDS("../crash_summaries/Summary_2009_2019_Tracts.rds")
 ca_2019      = readRDS("../crash_summaries/Summary_2009_2019_Community_Areas.rds")
 wards_2019   = readRDS("../crash_summaries/Summary_2009_2019_Wards.rds")
 police_2019  = readRDS("../crash_summaries/Summary_2009_2019_PoliceDist.rds")
   
 updated_crashes = rbind(crashes_2019,crashes)
+updated_tracts = rbind(tracts_2019,tract_summary)
 updated_ca = rbind(ca_2019,ca_summary)
 updated_wards = rbind(wards_2019,ward_summary)
 updated_police = rbind(police_2019,police_summary)
@@ -134,6 +149,9 @@ updated_police = rbind(police_2019,police_summary)
 # Save Merged Results
 saveRDS(updated_crashes, "../crash_summaries/Crashes_2009_present_IDOT_and_Chicago.rds")
 write.csv(updated_crashes, "../crash_summaries/Crashes_2009_present_IDOT_and_Chicago.csv")
+
+saveRDS(updated_tracts, "../crash_summaries/Summary_2009_present_Tracts.rds")
+write.csv(updated_tracts, "../crash_summaries/Summary_2009_present_Tracts.csv")
 
 saveRDS(updated_ca, "../crash_summaries/Summary_2009_present_Community_Areas.rds")
 write.csv(updated_ca, "../crash_summaries/Summary_2009_present_Community_Areas.csv")

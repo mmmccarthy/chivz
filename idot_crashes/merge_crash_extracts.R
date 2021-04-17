@@ -1,6 +1,7 @@
 
 library(dplyr)
 library(sf)
+library(stringr)
 
 crash_extracts = list()
 crash_extracts$y2009 = "~/apps/mupp/crash_extracts/Chicago2009Crashes.csv"
@@ -326,6 +327,7 @@ crashes_export = crashes_prepped %>%
 # Prep crash data by wards, community areas
     # Add boundary layers
     commareas <- read_sf("../geo/commareas.geojson")
+    tracts <- read_sf("../geo/tracts2010.geojson")
     wards <- read_sf("../geo/wards2015.geojson")
     police <- read_sf("../geo/police_districts.geojson")
     
@@ -333,6 +335,8 @@ crashes_export = crashes_prepped %>%
     commareas_pop = read.csv("../geo/population/commareas_2010.csv")
     commareas_pop$num = as.character(commareas_pop$num)
     commareas = left_join(commareas,commareas_pop, by=c("area_numbe" = "num"))
+    
+    # TODO Tract demographics
   
   crashes_geo = crashes_export %>%
     filter(latitude > 35 & longitude < -85)
@@ -344,9 +348,11 @@ crashes_export = crashes_prepped %>%
   crashes_geo <- st_set_crs(crashes_geo, 4326)
   
   crash_in_ca <- st_join(crashes_geo,commareas, join = st_within)
+  crash_in_tract <- st_join(crashes_geo,tracts, join = st_within)
   crash_in_ward <- st_join(crashes_geo,wards,join = st_within)
   crash_in_police <- st_join(crashes_geo,police,join = st_within)
   crashes_geo$commarea <- crash_in_ca$community.x
+  crashes_geo$tract <- crash_in_tract$GEOID10
   crashes_geo$ward <- crash_in_ward$ward
   crashes_geo$police_dist <- crash_in_police$dist_num
   
@@ -360,6 +366,16 @@ crashes_export = crashes_prepped %>%
 
   saveRDS(ca_summary_ped_cyc, "IDOT_2009_2017_Summary_Community_Areas.rds")
   write.csv(ca_summary_ped_cyc, "IDOT_2009_2017_Summary_Community_Areas.csv")
+  
+  # Summarize to census tracts
+  tract_summary_ped_cyc = crashes_geo %>%
+    st_drop_geometry() %>%
+    mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
+    group_by(tract, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+    summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
+  
+  saveRDS(tract_summary_ped_cyc, "IDOT_2009_2017_Summary_Tracts.rds")
+  write.csv(tract_summary_ped_cyc, "IDOT_2009_2017_Summary_Tracts.csv")
   
   # Summarize to wards
   ward_summary_ped_cyc = crashes_geo %>%

@@ -5,6 +5,7 @@
 
 idot_full = readRDS("../idot_crashes/IDOT_Crashes_Chicago_2009_2017.rds")
 idot_ca = readRDS("../idot_crashes/IDOT_2009_2017_Summary_Community_Areas.rds")
+idot_tracts = readRDS("../idot_crashes/IDOT_2009_2017_Summary_Tracts.rds")
 idot_wards = readRDS("../idot_crashes/IDOT_2009_2017_Summary_Wards.rds")
 idot_police = readRDS("../idot_crashes/IDOT_2009_2017_Summary_PoliceDist.rds")
 
@@ -12,6 +13,7 @@ idot_police = readRDS("../idot_crashes/IDOT_2009_2017_Summary_PoliceDist.rds")
 
 chicago_full = readRDS("../chicago_crashes/Crashes_2018_2019.rds")
 chicago_ca = readRDS("../chicago_crashes/Chicago_2018_2019_Summary_Community_Areas.rds")
+chicago_tracts = readRDS("../chicago_crashes/Chicago_2018_2019_Summary_Tracts.rds")
 chicago_wards = readRDS("../chicago_crashes/Chicago_2018_2019_Summary_Wards.rds")
 chicago_police = readRDS("../chicago_crashes/Chicago_2018_2019_Summary_PoliceDist.rds")
 
@@ -19,6 +21,7 @@ chicago_police = readRDS("../chicago_crashes/Chicago_2018_2019_Summary_PoliceDis
 
 combined_crashes = rbind(idot_full,chicago_full)
 combined_ca = rbind(idot_ca,chicago_ca)
+combined_tracts = rbind(idot_tracts,chicago_tracts)
 combined_wards = rbind(idot_wards,chicago_wards)
 combined_police = rbind(idot_police,chicago_police)
 
@@ -29,6 +32,9 @@ write.csv(combined_crashes, "Crashes_2009_2019_IDOT_and_Chicago.csv")
 
 saveRDS(combined_ca, "Summary_2009_2019_Community_Areas.rds")
 write.csv(combined_ca, "Summary_2009_2019_Community_Areas.csv")
+
+saveRDS(combined_tracts, "Summary_2009_2019_Tracts.rds")
+write.csv(combined_tracts, "Summary_2009_2019_Tracts.csv")
 
 saveRDS(combined_wards, "Summary_2009_2019_Wards.rds")
 write.csv(combined_wards, "Summary_2009_2019_Wards.csv")
