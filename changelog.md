@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Updated
 - Update Readme
+- Fix crashes by intersection year filtering
 
 ## [0.6] - 2020-10-11
 
