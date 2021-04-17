@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - Download 2020 year-to-date data from the Chicago Data Portal and summarize on launch
 - Add crash trends
+- Process and display of crashes by intersection
 
 ### Updated
 - Update Readme

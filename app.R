@@ -6,6 +6,12 @@
 #
 #    http://shiny.rstudio.com/
 #
+###############################################
+#
+# Chicago Vision Zero Dashboard
+# By Michael McCarthy, updated 4-17-2021
+#
+###############################################
 
 library(shiny)
 library(sf)
@@ -27,6 +33,7 @@ if (length(files_list) == 0) {
   last_update = "just now"
   cat("Updating crashes from Data Portal... \n")
   source("chicago_crashes/update.R", chdir = TRUE)
+  source("crash_summaries/intersections.R", chdir = TRUE)
   cat("Update complete \n")
 } else {
   cache_file_modified = file.mtime(paste0("cache/",files_list[1])) # file modified date/time
@@ -63,7 +70,7 @@ ui <- navbarPage("Chicago Crash Data",
             ),
             selectInput(inputId = "polygonyear",
                         label = "Year:",
-                        choices = c("All","2020","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
+                        choices = c("All","2021","2020","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
                         # TODO get selection choices from summary file
                         # TODO range of years
                         # TODO bar graphs based displayed years
@@ -103,16 +110,16 @@ ui <- navbarPage("Chicago Crash Data",
                 ),
                 selectInput(inputId = "intxyear",
                             label = "Year:",
-                            choices = c("All","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
+                            choices = c("All","2021","2020","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010","2009")
                 ),
                 sliderInput(inputId = "intxyear2",
                             label = "Year range:",
                             min = 2009,
-                            max = 2019,
+                            max = 2021,
                             step = 1,
                             sep = "",
                             ticks = FALSE,
-                            value = c(2009,2019))
+                            value = c(2009,2021))
               )
        ),
        column(9, 
@@ -167,7 +174,7 @@ server <- function(input, output) {
   police_dist_crashes = reactive({readRDS("crash_summaries/Summary_2009_present_PoliceDist.rds")})
   
   # Intersection Crash Data
-  intersection_summary = reactive({readRDS("crash_summaries/Summary_2009_2019_Intersections.rds")})
+  intersection_summary = reactive({readRDS("crash_summaries/Summary_2009_present_Intersections.rds")})
   intersection_crashes = reactive({readRDS("crash_summaries/crashes_to_intersection.rds")})
   
 
@@ -401,8 +408,8 @@ server <- function(input, output) {
     # }
     
     #if (input$intxyear2 != c(2009,2019)){ # update to min/max
-      hist_crashes = hist_crashes %>%
-        filter(year %in% input$intxyear2)
+    #  hist_crashes = hist_crashes %>% # DEBUG
+    #    filter(year %in% input$intxyear2)
     # }
     
     if (input$intxcrashtype == "Pedestrian") {
@@ -458,8 +465,8 @@ server <- function(input, output) {
     # }
     
     # if (input$intxyear2 != c(2009,2019)){ # update to min/max
-      hist_crashes = hist_crashes %>%
-        filter(year %in% input$intxyear2)
+    #  hist_crashes = hist_crashes %>% # DEBUG
+    #    filter(year %in% input$intxyear2)
     # }
     
     if (input$intxcrashtype == "Pedestrian") {
