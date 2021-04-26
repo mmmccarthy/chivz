@@ -361,7 +361,7 @@ crashes_export = crashes_prepped %>%
   ca_summary_ped_cyc = crashes_geo %>%
     st_drop_geometry() %>%
     mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-    group_by(commarea, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+    group_by(commarea, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
     summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
   saveRDS(ca_summary_ped_cyc, "IDOT_2009_2017_Summary_Community_Areas.rds")
@@ -371,7 +371,7 @@ crashes_export = crashes_prepped %>%
   tract_summary_ped_cyc = crashes_geo %>%
     st_drop_geometry() %>%
     mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-    group_by(tract, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+    group_by(tract, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
     summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
   
   saveRDS(tract_summary_ped_cyc, "IDOT_2009_2017_Summary_Tracts.rds")
@@ -381,7 +381,7 @@ crashes_export = crashes_prepped %>%
   ward_summary_ped_cyc = crashes_geo %>%
     st_drop_geometry() %>%
     mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-    group_by(ward, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+    group_by(ward, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
     summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
   saveRDS(ward_summary_ped_cyc, "IDOT_2009_2017_Summary_Wards.rds")
@@ -391,7 +391,7 @@ crashes_export = crashes_prepped %>%
   police_summary_ped_cyc = crashes_geo %>%
     st_drop_geometry() %>%
     mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-    group_by(police_dist, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+    group_by(police_dist, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
     summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
   saveRDS(police_summary_ped_cyc, "IDOT_2009_2017_Summary_PoliceDist.rds")

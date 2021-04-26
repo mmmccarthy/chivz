@@ -1,4 +1,4 @@
-## Pre-process 2018 and 2019 crashes from Chicago Data Portal
+## Pre-process 2018 through 2020 crashes from Chicago Data Portal
 ##    in the same format as IDOT crashes have been processed
 
 library(RSocrata)
@@ -12,7 +12,7 @@ readRenviron(file.path("../", ".Renviron"))
 # Query Data Portal
 url <-   "https://data.cityofchicago.org/resource/85ca-t3if.json?$"
 start_date <- '2018-01-01T00:00:00'  # See https://dev.socrata.com/docs/datatypes/floating_timestamp.html for format
-end_date <- '2019-12-31T23:59:00'
+end_date <- '2020-12-31T23:59:00'
 date <- paste0("crash_date between ","'",start_date,"'"," and ","'",end_date,"'")
 # type <- paste0("first_crash_type == 'PEDESTRIAN' OR first_crash_type == 'PEDALCYCLIST'") #,input$crashtype,"'")
 query <- paste0(url,"where=",date,"&$order=crash_date ASC")
@@ -75,7 +75,7 @@ ca_summary = crashes_geo %>%
   st_drop_geometry() %>%
   filter(!is.na(most_severe_injury)) %>% # Data portal has some non-injury crashes where all of the summary fields are NA
   mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-  group_by(commarea, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+  group_by(commarea, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
   summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
 # Tracts
@@ -83,7 +83,7 @@ tract_summary = crashes_geo %>%
   st_drop_geometry() %>%
   filter(!is.na(most_severe_injury)) %>% # Data portal has some non-injury crashes where all of the summary fields are NA
   mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-  group_by(tract, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+  group_by(tract, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
   summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
 # Wards
@@ -91,7 +91,7 @@ ward_summary = crashes_geo %>%
   st_drop_geometry() %>%
   filter(!is.na(most_severe_injury)) %>%
   mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-  group_by(ward, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+  group_by(ward, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
   summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
 # Police Districts
@@ -99,7 +99,7 @@ police_summary = crashes_geo %>%
   st_drop_geometry() %>%
   filter(!is.na(most_severe_injury)) %>%
   mutate(crash_date = as.POSIXct(crash_date), year = format(crash_date,"%Y")) %>%
-  group_by(police_dist, year, ped_cyc = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),"yes","no")) %>%
+  group_by(police_dist, year, crash_type = ifelse(first_crash_type %in% c("PEDESTRIAN", "PEDALCYCLIST"),first_crash_type,"Vehicle/Other")) %>%
   summarize(crashes = n(), injuries_total = sum(injuries_total), injuries_fatal = sum(injuries_fatal), injuries_incapacitating = sum(injuries_incapacitating), injuries_non_incapacitating = sum(injuries_non_incapacitating), injuries_reported_not_evident = sum(injuries_reported_not_evident))
 
 # Save Results

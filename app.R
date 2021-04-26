@@ -20,6 +20,8 @@ library(leaflet.extras)
 library(tidyverse)
 library(stringr)
 
+options(shiny.error = '')
+#options(shiny.error = recover)
 
 # Run once onload
 # Check for new crash data
@@ -33,7 +35,7 @@ if (length(files_list) == 0) {
   last_update = "just now"
   cat("Updating crashes from Data Portal... \n")
   source("chicago_crashes/update.R", chdir = TRUE)
-  source("crash_summaries/intersections.R", chdir = TRUE)
+  # source("crash_summaries/intersections.R", chdir = TRUE) # intersection update takes too long
   cat("Update complete \n")
 } else {
   cache_file_modified = file.mtime(paste0("cache/",files_list[1])) # file modified date/time
@@ -55,8 +57,6 @@ start_year = min(year_range, na.rm = T)
 end_year = max(year_range, na.rm = T)
 years = as.character(c(start_year:end_year))
 
-options(shiny.error = '')
-
 ui <- navbarPage("Chicago Crash Data",
   id = "open_tab",
   tabPanel("Summarized Crashes 2009-Present",
@@ -69,7 +69,9 @@ ui <- navbarPage("Chicago Crash Data",
           wellPanel(
             selectInput(inputId = "polygoncrashtype",
                         label = "Crash Type:",
-                        choices = c("Pedestrian/Cyclist","All Crash Types")
+                        choices = c("Pedestrian" = "PEDESTRIAN","Cyclist" = "PEDALCYCLIST","Vehicles/Objects" = "Vehicle/Other","All"),
+                        multiple = TRUE,
+                        selected = c("PEDESTRIAN","PEDALCYCLIST")
             ),
             selectInput(inputId = "polygontype",
                         label = "Summarize to:",
@@ -116,7 +118,9 @@ ui <- navbarPage("Chicago Crash Data",
               wellPanel(
                 selectInput(inputId = "intxcrashtype",
                             label = "Crash Type:",
-                            choices = c("Ped & Cyclist","Pedestrian","Cyclist")
+                            choices = c("Pedestrian" = "PEDESTRIAN","Cyclist" = "PEDALCYCLIST"),
+                            multiple = TRUE,
+                            selected = c("PEDESTRIAN","PEDALCYCLIST")
                 ),
                 sliderInput(inputId = "intxyears",
                             label = "Year range:",
@@ -134,9 +138,9 @@ ui <- navbarPage("Chicago Crash Data",
        )
      )
   )
-  # tabPanel("About",
-  #  includeHTML("meta.html") # causes bug!
-  # )
+  #tabPanel("About",
+  # includeHTML("meta.html") # causes bug!
+  #)
 )
 
 server <- function(input, output) {
@@ -218,10 +222,10 @@ server <- function(input, output) {
     
       hist_crashes = hist_crashes %>%
         filter(as.numeric(year) >= input$polygonyears[1] & as.numeric(year) <= input$polygonyears[2])
-
-      if (input$polygoncrashtype != "All Crash Types") {
+      
+      if (!("All" %in% input$polygoncrashtype)) {
         hist_crashes = hist_crashes %>%
-          filter(ped_cyc == "yes")
+          filter(crash_type %in% input$polygoncrashtype)
       }
       
       hist_crashes = hist_crashes %>%
@@ -283,9 +287,9 @@ server <- function(input, output) {
     hist_crashes = hist_crashes %>%
       filter(year >= input$polygonyears[1] & year <= input$polygonyears[2])
     
-    if (input$polygoncrashtype != "All Crash Types") {
+    if (!("All" %in% input$polygoncrashtype)) {
       hist_crashes = hist_crashes %>%
-        filter(ped_cyc == "yes")
+        filter(crash_type %in% input$polygoncrashtype)
     }
     
     if (!is.null(itemid)) {
@@ -309,7 +313,7 @@ server <- function(input, output) {
       }
       
       hist_crashes = hist_crashes %>%
-        select(Boundary = name, "Pedestrian/Cyclist Crashes" = ped_cyc, "Year" = year, "Tot Fatalities" = injuries_fatal, "Incapacitating Injuries" = injuries_incapacitating, "Tot Injuries" = injuries_total, "Tot Crash Records" = crashes)
+        select(Boundary = name, "Crash Type" = crash_type, "Year" = year, "Tot Fatalities" = injuries_fatal, "Incapacitating Injuries" = injuries_incapacitating, "Tot Injuries" = injuries_total, "Tot Crash Records" = crashes)
     }
 
     return (hist_crashes)
@@ -418,15 +422,8 @@ server <- function(input, output) {
     hist_crashes = intersection_summary()
 
     hist_crashes = hist_crashes %>%
-      filter(year >= as.numeric(input$intxyears[1]) & year <= as.numeric(input$intxyears[2]))
-    
-    if (input$intxcrashtype == "Pedestrian") {
-      hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDESTRIAN")
-    } else if (input$intxcrashtype == "Cyclist") {
-      hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDALCYCLIST")
-    }
+      filter(year >= as.numeric(input$intxyears[1]) & year <= as.numeric(input$intxyears[2])) %>%
+      filter(first_crash_type %in% input$intxcrashtype)
 
     hist_crashes = hist_crashes %>%
       group_by(intxid, intersection) %>%
@@ -467,15 +464,8 @@ server <- function(input, output) {
       filter((injuries_incapacitating + injuries_fatal) > 0)
     
     hist_crashes = hist_crashes %>%
-      filter(as.numeric(year) >= input$intxyears[1] & as.numeric(year) <= input$intxyears[2])
-    
-    if (input$intxcrashtype == "Pedestrian") {
-      hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDESTRIAN")
-    } else if (input$intxcrashtype == "Cyclist") {
-      hist_crashes = hist_crashes %>%
-        filter(first_crash_type == "PEDALCYCLIST")
-    }
+      filter(as.numeric(year) >= input$intxyears[1] & as.numeric(year) <= input$intxyears[2]) %>%
+      filter(first_crash_type %in% input$intxcrashtype)
     
     crash_list = hist_crashes %>%
       filter(intersection == itemid) %>%
