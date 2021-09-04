@@ -15,9 +15,11 @@ The data used in this tool is available for download within this repository.
 	
 ### Crash Summaries
 
-Summaries are available for each boundary type in either a CSV file or RDS for simple reading into R.
+Summaries are available for each boundary type in either a CSV file or RDS for simple reading into R. Summaries have been produced from different datasets, the most current being the last one listed here:
 
 - idot_crashes/IDOT\_2009\_2017\_Summary\_{boundary}.{csv | rds}
+- crash_summaries/Summary\_2009\_2019\_{boundary}.{csv | rds}
+- crash_summaries/Summary\_2009\_present\_{boundary}.{csv | rds}
 
 Each row is a summary for the given geographic boundary and year, with a row each for separating pedestrian/cyclist crashes from other crash types.
 
@@ -32,7 +34,11 @@ The total number of crash records for 2009 is `981 + 94 = 1075`.
 
 ### Processed Crash Records
 
-Each row is a crash report, which may involve a single or multiple persons/vehicles.
+Again, multiple datasets have been merged in different ways.
 
 - idot_crashes/IDOT\_Crashes\_Chicago\_2009\_2017.rds
+- crash_summaries/Crashes\_2009\_2019\_IDOT\_and\_Chicago.rds
+- crash_summaries/Crashes\_2009\_present\_IDOT\_and\_Chicago.rds
+
+Each row is a record from the `crashes` table of the crash dataset. Each crash record which may involve a single or multiple persons/vehicles. All columns have been aligned/renamed to match the way data is stored in the Chicago Data Portal.
       

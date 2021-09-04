@@ -51,6 +51,7 @@ crashes$injuries_fatal = as.integer(crashes$injuries_fatal)
 crashes$injuries_incapacitating = as.integer(crashes$injuries_incapacitating)
 crashes$injuries_non_incapacitating = as.integer(crashes$injuries_non_incapacitating)
 crashes$injuries_reported_not_evident = as.integer(crashes$injuries_reported_not_evident)
+crashes$year = format(crashes$crash_date,"%Y")
 
 # Write crash point data
 saveRDS(crashes,crashes_cached)
@@ -135,6 +136,8 @@ saveRDS(police_summary, "Chicago_2020_Summary_PoliceDist.rds")
 
 # Load Merged 2009-2019 Crashes
 crashes_2019 = readRDS("../crash_summaries/Crashes_2009_2019_IDOT_and_Chicago.rds")
+crashes_2019$year = format(crashes_2019$crash_date,"%Y")
+
 tracts_2019  = readRDS("../crash_summaries/Summary_2009_2019_Tracts.rds")
 ca_2019      = readRDS("../crash_summaries/Summary_2009_2019_Community_Areas.rds")
 wards_2019   = readRDS("../crash_summaries/Summary_2009_2019_Wards.rds")
