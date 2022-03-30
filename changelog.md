@@ -2,7 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0] - 2022-03-31
+
+### Added
+- Adds bar graph by year and crash type
+- CSV downloads
+
+### Updated
+- Separate functions into functions.R
+- Includes 2021 crashes in cache, including all crash types with any injury (not just pedestrian and cyclist crashes)
+- Better instructions and headings
+
+### Removed
+- Summaries by polygons (wards, community areas, police districts) are no longer included
+
+## [Untagged] - Mid 2021
 
 ### Added
 
