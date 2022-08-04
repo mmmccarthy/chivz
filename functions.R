@@ -73,29 +73,69 @@ loadCrashData <- function() {
   return(crashes)
 }
 
-getCrashes <- function(crashes, dateFrom = NULL, dateTo = NULL, boundingBox = NULL, crashTypes = NULL) {
+getCrashes <- function(crashes, yearFrom = NULL, yearTo = NULL, hourFrom = NULL, hourTo = NULL, boundingBox = NULL, crashTypes = NULL, injTypes = NULL) {
   # Argument formats:
-  # dateFrom, dateTo = POSIXlt date format
-  # boundingBox
-  # crashTypes = string or character vector, e.g. c("PEDESTRIAN","PEDALCYCLIST")
+  # boundingBox = list containing north, south (degrees lat), east, west (degrees lon)
+  # crashTypes, injTypes = string or character vector, e.g. c("PEDESTRIAN","PEDALCYCLIST")
   
   # Query the crash database for selected crashes
   filteredCrashes = crashes
   
-  if(!is.null(dateFrom)){
+  if(!is.null(yearFrom)){ 
     filteredCrashes = filteredCrashes %>%
-      filter(crash_date >= dateFrom)
+      filter(year >= yearFrom)
   }
   
-  if(!is.null(dateTo)){
+  if(!is.null(yearTo)){
     filteredCrashes = filteredCrashes %>%
-      filter(crash_date <= dateTo)
+      filter(year <= yearTo)
   }
+  
+  if(!is.null(hourFrom)){
+    filteredCrashes = filteredCrashes %>%
+      filter(crash_hour >= hourFrom)
+  }
+  
+  if(!is.null(hourTo)){
+    filteredCrashes = filteredCrashes %>%
+      filter(crash_hour <= hourTo)
+  }
+  
+  if(!is.null(boundingBox)){
+    filteredCrashes = filteredCrashes %>%
+      filter(latitude > boundingBox$south & latitude < boundingBox$north & longitude < boundingBox$east & longitude > boundingBox$west)
+  } 
   
   if(!is.null(crashTypes)){
     filteredCrashes = filteredCrashes %>%
       filter(first_crash_type %in% crashTypes)
   }
   
+  if(!is.null(injTypes)){
+    filteredCrashes = filteredCrashes %>%
+      filter(most_severe_injury %in% injTypes)
+  }
+  
   return(filteredCrashes)
+}
+
+updateCrashTable <- function(crashes_filtered,bounds) {
+  table = crashes_filtered %>%
+    filter(latitude > bounds$south & latitude < bounds$north & longitude < bounds$east & longitude > bounds$west)
+  
+  return(table)
+}
+
+getDrawnRectangle <- function(new_feature) {
+  if("geometry" %in% names(new_feature)) {
+    feature <- unlist(new_feature$geometry$coordinates)
+    
+    lat <- feature[seq(0, length(feature), 2)]
+    lon <- feature[seq(1, length(feature), 2)]
+    
+    bounds = list(north = max(lat), south = min(lat), east = max(lon), west = min(lon))
+    return(bounds)
+  } else {
+    return(NULL)
+  }
 }

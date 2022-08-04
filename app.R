@@ -11,7 +11,7 @@
 # Chicago Vision Zero Bounds selector
 # By Michael McCarthy
 # Created: 2021-09-04
-# Last update: 2022-01-03
+# Last update: 2022-08-03
 #
 ###############################################
 
@@ -22,13 +22,17 @@ library(leaflet.extras)
 library(dplyr)
 library(RSocrata)
 library(plotly)
+library(tidyr)
+library(stringr)
+library(jsonlite) # debugging
 # library(tidyverse)
-# library(stringr)
 # library(promises)
 # library(future)
 # plan(multisession)
 
 options(shiny.error = '')
+# for debug
+# options(shiny.fullstacktrace=TRUE)
 
 source("functions.R")
 
@@ -48,17 +52,18 @@ crash_data <- reactive({ rbind(crashes_cached, new_crashes) })
 
 # constants for now TODO
 start_year = 2009
-end_year = 2022
+end_year = as.integer(format(Sys.time(), "%Y")) # 2022
 
 ui <- navbarPage("Chicago Crash Data",
   id = "open_tab",
   tabPanel("Map",
      fluidRow(
-       column(10,
+       column(9,
+        tags$style(type = "text/css", "#map {height: 80vh !important;}"),
         leafletOutput("map"),
-        span(downloadLink("dlCSV","Download CSV File")) # ,downloadLink("dlGeo","Download GeoJson File"))
+        # htmlOutput("dataDesc"),
         ),
-       column(2,
+       column(3,
               h4("Options"),
               wellPanel(
                 selectInput(inputId = "crashtype",
@@ -97,40 +102,53 @@ ui <- navbarPage("Chicago Crash Data",
                             ticks = FALSE,
                             value = c(start_year,end_year)
                 ),
+                radioButtons("usegeobounds", "Geographic Filtering",
+                             choices = list("Map Extent" = 1, "Drawn Selection Box" = 2), selected = 1),
+                helpText("If no selection box is drawn, the second option will show all crashes citywide."),
+                
                 actionButton("update", "Update Map")
+                
               ),
-              p("Click Update Map to populate the map with crashes matching your selections.")
+              p("Click Update Map to populate the map with crashes matching your selections."),
+              
             )
        ),
        fluidRow(
-         column(6,
+         column(8,
                 h3("Crashes by Year and Type"),
-                h5("Limited to crashes currently displayed in the map"),
                 plotlyOutput("crashperyear")
                 ),
-         column(6,
+         column(4,
+                # h3("Crash Statistics"),
+                h3(textOutput("crashstatstext")),
+                tableOutput("crashstats"),
+                h3("Downloads"),
+                span(downloadLink("dlCSV","Download CSV File")),
+                br(),
+                span(downloadLink("dlGeo","Download GeoJSON File"))
+         ),
+         column(12,
                 h3("Crash Details"),
-                h5("Limited to crashes currently displayed in the map"),
                 DT::dataTableOutput("crashtable")
-         )
-                
-      ),
+                )
+      )
+  ),
+  tabPanel("About",
       fluidRow(
-        column(4,
-               h4("About the Data"),
-               p(textOutput("date_range")," To reduce storage and memory needs, this map only displays crashes where the most severe injury was not No Indication of Injury. Crashes with any fatality or reported injury, whether evident to first responders or not, are included."),
-               #p("To reduce"),
-               h4("About this App"),
+        column(12,
+               h2("About the Data"),
+               p("To reduce storage and memory needs, this map only displays crashes where there was some indication of any injury. Crashes with any fatality or reported injury, whether evident to first responders or not, are included."),
+               h3("Crash Data for 2018 to present"),
+               p("Data for 2018-present were obtained from the Chicago Data Portal. This data may include crashes which do not meet IDOT's reporting thresholds and exclude expressway crashes reported by the Illinois State Police."),
+               h4("Additional Data"),
+               p("The Chicago Data Portal also has data on the persons and vehicles involved in crashes. Each person or vehicle record is associated with a crash record."),
+               h3("Disclaimer for 2009-2017 Data"),
+               p("This tool uses crash report extracts obtained from the Illinois Department of Transportation (IDOT), which requires the following disclaimer to be used:"),
+               em("DISCLAIMER: The motor vehicle crash data referenced herein was provided by the Illinois Department of Transportation. Any conclusions drawn from analysis of the aforementioned data are the sole responsibility of the data recipient(s).  Additionally, for coding years 2015 to present, the Bureau of Data Collection uses the exact latitude/longitude supplied by the investigating law enforcement agency to locate crashes. Therefore, location data may vary in previous years since data prior to 2015 was physically located by bureau personnel."),
+               h2("About this App"),
                p("Created by Michael McCarthy using public data from the City of Chicago and IDOT"),
                p("Built with R, Shiny, and Leaflet"),
                a("View the Code on GitHub",href="https://github.com/mmmccarthy/chivz")
-               ),
-        column(8,
-               h4("Crash Data for 2018 to present"),
-               p("Data for 2018-present were obtained from the Chicago Data Portal. This data may include crashes which do not meet IDOT's reporting thresholds and exclude expressway crashes reported by the Illinois State Police."),
-               h4("Disclaimer for 2009-2017 Data"),
-               p("This tool uses crash report extracts obtained from the Illinois Department of Transportation (IDOT), which requires the following disclaimer to be used:"),
-               em("DISCLAIMER: The motor vehicle crash data referenced herein was provided by the Illinois Department of Transportation. Any conclusions drawn from analysis of the aforementioned data are the sole responsibility of the data recipient(s).  Additionally, for coding years 2015 to present, the Bureau of Data Collection uses the exact latitude/longitude supplied by the investigating law enforcement agency to locate crashes. Therefore, location data may vary in previous years since data prior to 2015 was physically located by bureau personnel.")
                )
       )
   )
@@ -138,71 +156,82 @@ ui <- navbarPage("Chicago Crash Data",
 
 server <- function(input, output) {
   
-  crashes_filtered <- eventReactive(input$update ,{
-      crash_data() %>%
-        filter(first_crash_type %in% input$crashtype,
-               most_severe_injury %in% input$injtype,
-               crash_hour >= as.numeric(input$hours[1]) & crash_hour <= as.numeric(input$hours[2]),
-               year >= as.numeric(input$years[1]) & year <= as.numeric(input$years[2])
-              )
-    })
-  
-  crashes_displayed <- eventReactive(input$map_bounds,{ 
-    # BUG for map_bounds: currently map needs to be nudged after hitting update button
-    # is is possible to react to both input$update and input$map_bounds?
-    bounds <- input$map_bounds
-    crashes_filtered() %>%
-      filter(latitude > bounds$south & latitude < bounds$north & longitude < bounds$east & longitude > bounds$west)
+  crashes_filtered <- eventReactive(input$update,{
+    if(input$usegeobounds == 1){
+      # map extent
+      geo_bounds = input$map_bounds
+    } else if(input$usegeobounds == 2) {
+      # user-drawn bounding box
+      geo_bounds = getDrawnRectangle(input$map_draw_new_feature)
+    }
+    
+    getCrashes(crash_data(),
+               yearFrom = as.numeric(input$years[1]),
+               yearTo = as.numeric(input$years[2]),
+               hourFrom = as.numeric(input$hours[1]),
+               hourTo = as.numeric(input$hours[2]),
+               boundingBox = geo_bounds, 
+               crashTypes = input$crashtype,
+               injTypes = input$injtype
+               
+    )
+    
   })
-  
+
   output$crashtable <- DT::renderDataTable({
-    crashes_displayed() %>%
+    crashes_filtered() %>%
       select(crash_date,rd_no,first_crash_type,most_severe_injury,prim_contributory_cause,sec_contributory_cause)
     })
   
+  output$crashstatstext <- renderText({
+    crash_total <- crashes_filtered() %>% nrow()
+    min_date <- crashes_filtered() %>% summarize(min(crash_date)) %>% pull(`min(crash_date)`) %>% format("%B %d, %Y")
+    max_date <- crashes_filtered() %>% summarize(max(crash_date)) %>% pull(`max(crash_date)`) %>% format("%B %d, %Y")
+    
+    paste0("Showing ",crash_total," crashes occurring between ",min_date," and ",max_date)
+  })
+  
+  output$crashstats <- renderTable({
+    crashes_filtered() %>%
+      mutate(first_crash_type = str_to_title(first_crash_type),
+             most_severe_injury = str_to_title(most_severe_injury) ) %>%
+      group_by(first_crash_type,most_severe_injury) %>%
+      summarize(Count = n()) %>%
+      pivot_wider(names_from = most_severe_injury, values_from = Count, values_fill = list(Count = 0)) %>%
+      rename(`Crash Type` = first_crash_type)
+  })
+  
+  # crashstats <- list(total = crashes_filtered() %>% nrow(),
+  #                           by_year = crashes_filtered() %>% with(table(crash_year)),
+  #                           by_type = crashes_filtered() %>% with(table(first_crash_type)),
+  #                           by_inj = crashes_filtered() %>% with(table(most_severe_injury))
+  #                             )
+  
   output$crashperyear <- renderPlotly({
-    year_summary <- crashes_displayed() %>%
+    year_summary <- crashes_filtered() %>%
       group_by(year,first_crash_type) %>%
       summarize(total = n())
     
-    plot_ly(year_summary, x = ~year, y = ~total,  type="bar", name = ~first_crash_type)
+    plot_ly(year_summary, x = ~year, y = ~total,  type="bar", name = ~first_crash_type) %>% layout(barmode = "stack")
   })
   
-#  crashes_filtered <- eventReactive(input$update ,{
-#    if(resolved(crash_data)) {
-#      result = crash_data %...>%
-#        filter(first_crash_type %in% input$crashtype,
-#               year >= as.numeric(input$years[1]) & year <= as.numeric(input$years[2])
-#               #TODO: also need bounding box for lat/long 
-#              )
-#    }else{
-#      cat("Waiting for more data to load...")
-#      result = dget("crash_sample.txt") %>%
-#        filter(first_crash_type %in% input$crashtype,
-#               year >= as.numeric(input$years[1]) & year <= as.numeric(input$years[2])
-#               #TODO: also need bounding box for lat/long 
-#        )
-#    }
-#    
-#    return(result)
-#  })
 
   ## Leaflet Outputs
   shapeFormat = drawShapeOptions(stroke = T, color = "#2980B9", weight = 4, dashArray = "3 5", fillColor = "#9AD5F7", fillOpacity = 0.5)
   output$map <- renderLeaflet({
     leaflet() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
-      # addDrawToolbar(
-      #   targetGroup = "draw",
-      #   markerOptions = FALSE,
-      #   circleMarkerOptions = FALSE,
-      #   polygonOptions = drawPolygonOptions(showArea = F, shapeOptions = shapeFormat),
-      #   polylineOptions = drawPolylineOptions(allowIntersection = F, showLength = T, metric = F, feet = T, nautic = F, shapeOptions = shapeFormat),
-      #   rectangleOptions = drawRectangleOptions(shapeOptions = shapeFormat),
-      #   circleOptions = drawCircleOptions(showRadius = T, metric = F, feet = T, nautic = F, shapeOptions = shapeFormat),
-      #   editOptions = editToolbarOptions(),
-      #   singleFeature = T
-      # ) %>%
+      addDrawToolbar(
+        targetGroup = "draw",
+        markerOptions = FALSE,
+        circleMarkerOptions = FALSE,
+        polygonOptions = FALSE, # drawPolygonOptions(showArea = F, shapeOptions = shapeFormat),
+        polylineOptions = FALSE,
+        rectangleOptions = drawRectangleOptions(shapeOptions = shapeFormat),
+        circleOptions = FALSE,
+        editOptions = editToolbarOptions(),
+        singleFeature = T
+      ) %>%
       setView(
         lng = -87.5,
         lat = 41.9,
@@ -226,19 +255,30 @@ server <- function(input, output) {
       )
   })
   
-  output$date_range = renderText({
-    crash_dates = crash_data() %>% pull(crash_date)
-    paste0("Showing up-to-date crashes with any injury (excludes property damage only) between ",min(as.Date(crash_dates))," and ",max(as.Date(crash_dates)),".")
-  })
+#  output$date_range = renderText({
+#    crash_dates = crash_data() %>% pull(crash_date)
+#    paste0("Showing up-to-date crashes with any injury (excludes property damage only) between ",min(as.Date(crash_dates))," and ",max(as.Date(crash_dates)),".")
+#  })
   
   output$dlCSV <- downloadHandler(
     filename = function() {
        paste('displayed-crashes-', Sys.Date(), '.csv', sep='')
     },
     content = function(file) { # note file is a temp file provided by Shiny 
-       write.csv(crashes_displayed(), file)
+       write.csv(crashes_filtered(), file)
     }
     )
+  
+  output$dlGeo <- downloadHandler(
+    filename = function() {
+      paste('displayed-crashes-', Sys.Date(), '.geojson', sep='')
+    },
+    content = function(file) { # note file is a temp file provided by Shiny 
+      crashes_geo_temp <- st_as_sf(crashes_filtered(), coords = c("longitude","latitude"))
+      crashes_geo_temp <- st_set_crs(crashes_geo_temp, 4326)
+      st_write(crashes_geo_temp, driver = "GeoJSON", file)
+    }
+  )
 }
 
 # Run the application 
